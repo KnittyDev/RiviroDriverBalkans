@@ -4,6 +4,7 @@ import '../../theme/app_theme.dart';
 import '../orders/widgets/order_item_card.dart';
 import 'widgets/home_header.dart';
 import 'widgets/status_toggle_card.dart';
+import 'widgets/radius_selector_card.dart';
 import 'widgets/quick_stats_strip.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isOnline = true; // Driver online status
+  double _selectedRadiusKm = 10.0; // Default service radius in km
 
   final List<Map<String, String>> _recentTrips = const [
     {
@@ -88,9 +90,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 16),
+
+              // 3. Pickup Service Radius Selector Card (5 km to 50 km)
+              RadiusSelectorCard(
+                currentRadiusKm: _selectedRadiusKm,
+                onRadiusChanged: (newRadius) {
+                  setState(() {
+                    _selectedRadiusKm = newRadius;
+                  });
+                },
+              ),
               const SizedBox(height: 18),
 
-              // 3. Quick Stats Strip (Earnings, Trips, Online Time)
+              // 4. Quick Stats Strip (Earnings, Trips, Online Time)
               Text(
                 'Today\'s Summary',
                 style: GoogleFonts.poppins(
@@ -107,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 20),
 
-              // 4. Recent Trips Section
+              // 5. Recent Trips Section
               Text(
                 'Recent Trips',
                 style: GoogleFonts.poppins(

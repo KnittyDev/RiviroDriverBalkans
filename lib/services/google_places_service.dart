@@ -29,8 +29,7 @@ class PlaceSuggestion {
 }
 
 class GooglePlacesService {
-  static String get _apiKey =>
-      dotenv.env['GOOGLE_MAPS_API_KEY'] ?? 'AIzaSyCNv_2DvIEpGdvlyMyFbezmN9QQviLmizY';
+  static String get _apiKey => dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
   // 1. Fetch live autocomplete suggestions from Google Places API
   static Future<List<PlaceSuggestion>> fetchAutocomplete(String input) async {

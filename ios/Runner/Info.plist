@@ -70,5 +70,9 @@
 	<string>Rivilo Driver needs access to your location to find nearby ride requests and guide navigation.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Rivilo Driver needs access to your location to track rides and update passengers in real time.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Rivilo Driver requires access to your photo library to update your driver profile picture.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Rivilo Driver requires access to your camera to capture your driver profile picture.</string>
 </dict>
 </plist>
