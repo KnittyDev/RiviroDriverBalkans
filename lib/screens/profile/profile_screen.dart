@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/withdraw_modal.dart';
 import 'widgets/profile_header.dart';
 import 'widgets/balance_card.dart';
 import 'widgets/stats_grid.dart';
@@ -34,16 +35,11 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 14),
 
-              // 2. Balance Card
+              // 2. Balance Card with Integrated Withdraw Modal
               BalanceCard(
                 balance: '1.245€',
                 onCashOutTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Withdraw requested'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                  WithdrawModal.show(context, availableBalance: '1.245€');
                 },
               ),
               const SizedBox(height: 12),
