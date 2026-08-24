@@ -105,7 +105,7 @@ class RideAlertService {
       await _audioPlayer.stop();
       await _audioPlayer.play(AssetSource('sfx/ride.mp3'));
 
-      final hasVibrator = await Vibration.hasVibrator() ?? false;
+      final hasVibrator = await Vibration.hasVibrator();
       if (hasVibrator) {
         Vibration.vibrate(duration: 200); // Light vibration pulse on each repeat
       } else {

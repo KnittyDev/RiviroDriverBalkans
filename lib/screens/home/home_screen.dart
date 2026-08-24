@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../services/auth_service.dart';
+import '../../services/supabase_location_tracker_service.dart';
+import '../../services/hot_potato_dispatch_service.dart';
 import '../../theme/app_theme.dart';
 import '../orders/widgets/order_item_card.dart';
 import 'widgets/home_header.dart';
@@ -15,7 +18,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _isOnline = true; // Driver online status
   double _selectedRadiusKm = 10.0; // Default service radius in km
 
   final List<Map<String, String>> _recentTrips = const [
@@ -62,43 +64,50 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Hello David Header
-              const HomeHeader(
-                name: 'David!',
-              ),
+              // 1. Hello Driver Header
+              const HomeHeader(),
               const SizedBox(height: 18),
 
-              // 2. Online / Offline Status Toggle Card
-              StatusToggleCard(
-                isOnline: _isOnline,
-                onToggle: (value) {
-                  setState(() {
-                    _isOnline = value;
-                  });
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        _isOnline
-                            ? 'You are now Online! Finding rides...'
-                            : 'You are now Offline.',
-                        style: GoogleFonts.poppins(fontSize: 12.5),
-                      ),
-                      backgroundColor: _isOnline ? AppColors.textDark : Colors.grey.shade800,
-                      duration: const Duration(seconds: 2),
-                    ),
+              // 2. Online / Offline Status Toggle Card (Connected to Supabase)
+              ValueListenableBuilder<DriverProfileModel?>(
+                valueListenable: AuthService.currentDriverNotifier,
+                builder: (context, driver, child) {
+                  final isOnline = driver?.isOnline ?? true;
+                  return StatusToggleCard(
+                    isOnline: isOnline,
+                    onToggle: (value) async {
+                      await AuthService.updateOnlineStatus(value);
+                      if (value) {
+                        SupabaseLocationTrackerService().startLocationTracking();
+                      }
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            value
+                                ? 'You are now Online! Location tracking active.'
+                                : 'You are now Offline. Location tracking paused.',
+                            style: GoogleFonts.poppins(fontSize: 12.5),
+                          ),
+                          backgroundColor: value ? AppColors.textDark : Colors.grey.shade800,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
               const SizedBox(height: 16),
 
-              // 3. Pickup Service Radius Selector Card (5 km to 50 km)
+              // 3. Pickup Service Radius Selector Card (1 km to 15 km)
               RadiusSelectorCard(
                 currentRadiusKm: _selectedRadiusKm,
                 onRadiusChanged: (newRadius) {
                   setState(() {
                     _selectedRadiusKm = newRadius;
                   });
+                  HotPotatoDispatchService.updateServiceRadius(newRadius);
                 },
               ),
               const SizedBox(height: 18),

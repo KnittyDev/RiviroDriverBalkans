@@ -4,6 +4,10 @@ import 'orders/orders_screen.dart';
 import 'profile/profile_screen.dart';
 import '../widgets/custom_bottom_navbar.dart';
 import '../services/location_service.dart';
+import '../services/battery_optimization_service.dart';
+import '../services/supabase_location_tracker_service.dart';
+import '../services/auth_service.dart';
+import '../services/hot_potato_dispatch_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -24,9 +28,21 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    // Request location permission & prompt native GPS "Turn on" dialog when user opens the app
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      LocationService().initAndRequestLocationPermission();
+    // 1. Initialize active driver session from SharedPreferences / Supabase
+    // 2. Request location permission & prompt native GPS "Turn on" dialog when user opens the app
+    // 3. Automatically prompt Power Saver / Battery Optimization dialog on launch
+    // 4. Start 50-meter Supabase Location Tracker
+    // 5. Start Hot Potato Dispatch Realtime Listener for incoming ride offers
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await AuthService.initSavedDriverSession();
+      final hasLocation = await LocationService().initAndRequestLocationPermission();
+      if (hasLocation) {
+        SupabaseLocationTrackerService().startLocationTracking();
+      }
+      if (mounted) {
+        BatteryOptimizationService.checkAndPromptBatteryOptimizationOnStartup(context);
+        HotPotatoDispatchService().startListening(context);
+      }
     });
   }
 

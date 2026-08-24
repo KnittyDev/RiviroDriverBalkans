@@ -5,20 +5,28 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart' as loc;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
 import '../../services/directions_service.dart';
 import '../../services/location_service.dart';
+import '../../widgets/rider_contact_modal.dart';
 
 class RideNavigationScreen extends StatefulWidget {
+  final String? rideId;
+  final String? initialStatus;
   final String passengerName;
   final String pickupAddress;
   final String dropoffAddress;
+  final String paymentMethod;
 
   const RideNavigationScreen({
     super.key,
+    this.rideId,
+    this.initialStatus = 'accepted',
     this.passengerName = 'Marcus Vance',
-    this.pickupAddress = 'Current Driver Location',
+    this.pickupAddress = 'Center Siedlce, Poland',
     this.dropoffAddress = 'Galeria Siedlce, Poland',
+    this.paymentMethod = 'Online',
   });
 
   @override
@@ -27,6 +35,7 @@ class RideNavigationScreen extends StatefulWidget {
 
 class _RideNavigationScreenState extends State<RideNavigationScreen> {
   GoogleMapController? _mapController;
+  late String _currentStatus;
 
   // Real Destination (Galeria Siedlce, Poland)
   static const LatLng _dropoffLatLng = LatLng(52.1691, 22.2798);
@@ -50,6 +59,7 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    _currentStatus = widget.initialStatus ?? 'accepted';
     _loadCustomMarkerIcons().then((_) {
       _setupRealDeviceGpsTracking();
     });
@@ -479,70 +489,224 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Route Timeline summary
+                  // Passenger info row + Call button
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Icon(Icons.gps_fixed_rounded, color: AppColors.primary, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Real Hardware GPS Live Stream',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textMuted,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.passengerName,
+                            style: GoogleFonts.poppins(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textDark,
+                            ),
                           ),
+                          Text(
+                            'Destination: ${widget.dropoffAddress}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11.5,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryActiveBg,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  widget.paymentMethod.toLowerCase() == 'cash'
+                                      ? Icons.payments_rounded
+                                      : Icons.credit_card_rounded,
+                                  size: 11,
+                                  color: AppColors.textDark,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  widget.paymentMethod.toLowerCase() == 'cash'
+                                      ? 'Cash Ride (Collect Cash)'
+                                      : 'Online Payment (In-App)',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          RiderContactModal.show(
+                            context,
+                            passengerName: widget.passengerName,
+                          );
+                        },
+                        child: Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryActiveBg,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+                          ),
+                          child: const Icon(Icons.phone_rounded, color: AppColors.textDark, size: 20),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Real Device Position ➔ ${widget.dropoffAddress}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
-                    ),
-                  ),
                   const SizedBox(height: 16),
 
-                  // Arrived / Action Button
+                  // Dynamic Action Button (Arrived at Pickup -> Start Ride -> Complete Trip)
                   SizedBox(
                     width: double.infinity,
                     height: 52,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Arrived at ${widget.dropoffAddress}!',
-                              style: GoogleFonts.poppins(fontSize: 12.5),
+                    child: Builder(
+                      builder: (context) {
+                        if (_currentStatus == 'accepted' || _currentStatus == 'on_the_way') {
+                          return ElevatedButton.icon(
+                            onPressed: () async {
+                              if (widget.rideId != null) {
+                                await Supabase.instance.client
+                                    .from('rides')
+                                    .update({'status': 'arrived', 'updated_at': DateTime.now().toUtc().toIso8601String()})
+                                    .eq('id', widget.rideId!);
+                              }
+                              setState(() {
+                                _currentStatus = 'arrived';
+                              });
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Arrived at Pickup Location!',
+                                      style: GoogleFonts.poppins(fontSize: 12.5),
+                                    ),
+                                    backgroundColor: AppColors.textDark,
+                                  ),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
                             ),
-                            backgroundColor: AppColors.textDark,
-                          ),
-                        );
+                            icon: const Icon(
+                              Icons.pin_drop_rounded,
+                              color: AppColors.textDark,
+                            ),
+                            label: Text(
+                              'Arrived at Pickup',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                          );
+                        } else if (_currentStatus == 'arrived') {
+                          return ElevatedButton.icon(
+                            onPressed: () async {
+                              if (widget.rideId != null) {
+                                await Supabase.instance.client
+                                    .from('rides')
+                                    .update({'status': 'in_progress', 'updated_at': DateTime.now().toUtc().toIso8601String()})
+                                    .eq('id', widget.rideId!);
+                              }
+                              setState(() {
+                                _currentStatus = 'in_progress';
+                              });
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Ride Started! Navigating to destination.',
+                                      style: GoogleFonts.poppins(fontSize: 12.5),
+                                    ),
+                                    backgroundColor: const Color(0xFF22C55E),
+                                  ),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF22C55E),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            icon: const Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                            label: Text(
+                              'Start Ride',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          );
+                        } else {
+                          // in_progress -> Complete Trip
+                          return ElevatedButton.icon(
+                            onPressed: () async {
+                              if (widget.rideId != null) {
+                                await Supabase.instance.client
+                                    .from('rides')
+                                    .update({'status': 'completed', 'updated_at': DateTime.now().toUtc().toIso8601String()})
+                                    .eq('id', widget.rideId!);
+                              }
+                              Navigator.pop(context);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Trip Completed successfully!',
+                                      style: GoogleFonts.poppins(fontSize: 12.5),
+                                    ),
+                                    backgroundColor: AppColors.textDark,
+                                  ),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            icon: const Icon(
+                              Icons.check_circle_rounded,
+                              color: AppColors.textDark,
+                            ),
+                            label: Text(
+                              'Complete Trip',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                          );
+                        }
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      icon: const Icon(
-                        Icons.check_circle_rounded,
-                        color: AppColors.textDark,
-                      ),
-                      label: Text(
-                        'Arrived at Destination',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textDark,
-                        ),
-                      ),
                     ),
                   ),
                 ],

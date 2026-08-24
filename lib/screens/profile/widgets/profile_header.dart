@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../services/auth_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../settings/settings_screen.dart';
@@ -10,7 +11,7 @@ class ProfileHeader extends StatelessWidget {
 
   const ProfileHeader({
     super.key,
-    this.name = 'David!',
+    this.name = 'Driver',
     this.onSettingsTap,
   });
 
@@ -37,27 +38,33 @@ class ProfileHeader extends StatelessWidget {
         const SizedBox(width: 12),
         // Greeting & Name
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Hello',
-                style: GoogleFonts.poppins(
-                  fontSize: 12.5,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              Text(
-                name,
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                  height: 1.1,
-                ),
-              ),
-            ],
+          child: ValueListenableBuilder<DriverProfileModel?>(
+            valueListenable: AuthService.currentDriverNotifier,
+            builder: (context, driver, child) {
+              final displayName = driver?.fullName.isNotEmpty == true ? driver!.fullName : name;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Hello',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  Text(
+                    displayName,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textDark,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
 

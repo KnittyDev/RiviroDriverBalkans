@@ -21,8 +21,8 @@ class RideVibrationService {
     _isVibrating = true;
 
     try {
-      final hasVibrator = await Vibration.hasVibrator() ?? false;
-      final hasCustomSupport = await Vibration.hasCustomVibrationsSupport() ?? false;
+      final hasVibrator = await Vibration.hasVibrator();
+      final hasCustomSupport = await Vibration.hasCustomVibrationsSupport();
 
       if (hasVibrator) {
         if (hasCustomSupport) {

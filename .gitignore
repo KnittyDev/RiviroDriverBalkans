@@ -48,3 +48,11 @@ app.*.map.json
 .env
 *.env
 .env.*
+
+# Supabase Edge Functions & TypeScript files
+supabase/
+supabase/functions/
+*.ts
+*.tsx
+deno.lock
+.supabase/

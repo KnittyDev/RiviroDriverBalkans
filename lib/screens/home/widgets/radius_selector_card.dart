@@ -12,10 +12,12 @@ class RadiusSelectorCard extends StatelessWidget {
     required this.onRadiusChanged,
   });
 
-  static const List<double> presetRanges = [5.0, 10.0, 15.0, 25.0, 50.0];
+  static const List<double> presetRanges = [3.0, 5.0, 8.0, 10.0, 15.0];
 
   @override
   Widget build(BuildContext context) {
+    final double safeRadius = currentRadiusKm.clamp(1.0, 15.0);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -71,7 +73,7 @@ class RadiusSelectorCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${currentRadiusKm.toInt()} km Radius',
+                  '${safeRadius.toInt()} km Radius',
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -83,7 +85,7 @@ class RadiusSelectorCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'You will receive incoming ride requests within ${currentRadiusKm.toInt()} km of your location.',
+            'You will receive incoming ride requests within ${safeRadius.toInt()} km of your location (Max 15 km).',
             style: GoogleFonts.poppins(
               fontSize: 12,
               color: AppColors.textMuted,
@@ -105,11 +107,11 @@ class RadiusSelectorCard extends StatelessWidget {
               ),
             ),
             child: Slider(
-              value: currentRadiusKm,
-              min: 5.0,
-              max: 50.0,
-              divisions: 9, // 5, 10, 15, 20, 25, 30, 35, 40, 45, 50
-              label: '${currentRadiusKm.toInt()} km',
+              value: safeRadius,
+              min: 1.0,
+              max: 15.0,
+              divisions: 14, // 1 to 15 km steps
+              label: '${safeRadius.toInt()} km',
               onChanged: onRadiusChanged,
             ),
           ),

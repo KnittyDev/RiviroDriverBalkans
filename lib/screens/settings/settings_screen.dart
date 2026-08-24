@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
 import '../../theme/app_theme.dart';
 import 'pages/vehicle_settings_screen.dart';
@@ -9,6 +10,9 @@ import 'pages/driver_license_screen.dart';
 import 'pages/vehicle_insurance_screen.dart';
 import 'pages/terms_of_service_screen.dart';
 import 'pages/privacy_policy_screen.dart';
+import '../../widgets/driver_growth_boost_modal.dart';
+import '../../widgets/boost_calculator_modal.dart';
+import '../auth/auth_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -212,18 +216,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(width: 14),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'David Vance',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textDark,
-                          ),
-                        ),
-                      ],
+                    child: ValueListenableBuilder<DriverProfileModel?>(
+                      valueListenable: AuthService.currentDriverNotifier,
+                      builder: (context, driver, child) {
+                        final name = driver?.fullName.isNotEmpty == true ? driver!.fullName : 'Driver Profile';
+                        final email = driver?.email ?? '';
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                            if (email.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                email,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -231,7 +252,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 2. Documents & Compliance
+            // 2. Driver Tips
+            _buildSectionTitle('Driver Tips'),
+            const SizedBox(height: 10),
+            _buildSettingsContainer([
+              _buildSimpleTile(
+                title: 'Get More Rides',
+                subtitle: 'Tips on ratings, chargers & peak hours',
+                icon: Icons.rocket_launch_rounded,
+                onTap: () => DriverGrowthBoostModal.show(context),
+              ),
+              const Divider(color: AppColors.border, height: 1),
+              _buildSimpleTile(
+                title: 'Calculate Boost Score',
+                subtitle: 'Test your potential dispatch score live',
+                icon: Icons.calculate_rounded,
+                onTap: () => BoostCalculatorModal.show(context),
+              ),
+            ]),
+            const SizedBox(height: 24),
+
+            // 3. Documents & Compliance
             _buildSectionTitle('Documents & Compliance'),
             const SizedBox(height: 10),
             _buildSettingsContainer([
@@ -325,7 +366,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
             const SizedBox(height: 24),
 
-            // 5. System & Legal Policies
+            // 5. Driver Authentication & Account Switch
+            _buildSectionTitle('Driver Account'),
+            const SizedBox(height: 10),
+            _buildSettingsContainer([
+              _buildSimpleTile(
+                title: 'Sign In / Register Driver Account',
+                subtitle: 'Log in or create a new official Driver profile',
+                icon: Icons.account_circle_rounded,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AuthScreen()),
+                  );
+                },
+              ),
+            ]),
+            const SizedBox(height: 24),
+
+            // 6. System & Legal Policies
             _buildSectionTitle('Legal & System'),
             const SizedBox(height: 10),
             _buildSettingsContainer([

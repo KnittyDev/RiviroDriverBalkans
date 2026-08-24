@@ -9,6 +9,7 @@ enum RideCardType {
 
 class ActiveRideCard extends StatelessWidget {
   final RideCardType cardType;
+  final String rideStatus; // 'accepted', 'on_the_way', 'arrived', 'in_progress'
   final String passengerName;
   final String passengerRating;
   final String fare;
@@ -20,15 +21,19 @@ class ActiveRideCard extends StatelessWidget {
   final VoidCallback? onDecline;
   final VoidCallback? onCallPassenger;
   final VoidCallback? onMessagePassenger;
+  final VoidCallback? onArrivedAtPickup;
+  final VoidCallback? onStartRide;
   final VoidCallback? onCompleteRide;
   final VoidCallback? onGoToLocation;
   final bool isAlerting;
   final double progressValue; // 0.0 to 1.0
   final int remainingSeconds; // 12 down to 0
+  final String paymentMethod; // 'Online' or 'Cash'
 
   const ActiveRideCard({
     super.key,
     this.cardType = RideCardType.upcoming,
+    this.rideStatus = 'accepted',
     this.passengerName = 'Sophia M.',
     this.passengerRating = '4.9',
     this.fare = '18.50€',
@@ -40,11 +45,14 @@ class ActiveRideCard extends StatelessWidget {
     this.onDecline,
     this.onCallPassenger,
     this.onMessagePassenger,
+    this.onArrivedAtPickup,
+    this.onStartRide,
     this.onCompleteRide,
     this.onGoToLocation,
     this.isAlerting = false,
     this.progressValue = 1.0,
     this.remainingSeconds = 12,
+    this.paymentMethod = 'Online',
   });
 
   @override
@@ -97,16 +105,20 @@ class ActiveRideCard extends StatelessWidget {
                       height: 7,
                       decoration: BoxDecoration(
                         color: isOngoing
-                            ? AppColors.primary
+                            ? (rideStatus == 'arrived'
+                                ? const Color(0xFF22C55E)
+                                : AppColors.primary)
                             : (isAlerting ? Colors.orange : AppColors.primary),
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      isOngoing
-                          ? 'In Progress'
-                          : (isAlerting ? 'Incoming Request (${remainingSeconds}s)' : 'New Trip Request'),
+                      !isOngoing
+                          ? (isAlerting ? 'Incoming Request (${remainingSeconds}s)' : 'New Trip Request')
+                          : (rideStatus == 'accepted' || rideStatus == 'on_the_way'
+                              ? 'On the Way to Pickup'
+                              : (rideStatus == 'arrived' ? 'Arrived at Pickup' : 'Trip In Progress')),
                       style: GoogleFonts.poppins(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -118,13 +130,48 @@ class ActiveRideCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(
-                fare,
-                style: GoogleFonts.poppins(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    fare,
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryActiveBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          paymentMethod.toLowerCase() == 'cash'
+                              ? Icons.payments_rounded
+                              : Icons.credit_card_rounded,
+                          size: 11,
+                          color: AppColors.textDark,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          paymentMethod.toLowerCase() == 'cash' ? 'Cash Payment' : 'Online Payment',
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -311,36 +358,93 @@ class ActiveRideCard extends StatelessWidget {
 
           // Action Buttons Section
           if (isOngoing)
-            // Ongoing Active Ride Actions: Complete Ride & Go to Location Buttons
+            // Ongoing Active Ride Actions: Multi-step Action (Arrived -> Start -> Complete) & Navigation
             Column(
               children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    onPressed: onCompleteRide,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                if (rideStatus == 'accepted' || rideStatus == 'on_the_way')
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: onArrivedAtPickup,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.pin_drop_rounded,
+                        color: AppColors.textDark,
+                        size: 20,
+                      ),
+                      label: Text(
+                        'Arrived at Pickup',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textDark,
+                        ),
                       ),
                     ),
-                    icon: const Icon(
-                      Icons.check_circle_outline_rounded,
-                      color: AppColors.textDark,
-                      size: 20,
+                  )
+                else if (rideStatus == 'arrived')
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: onStartRide,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF22C55E),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                      label: Text(
+                        'Start Ride',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                    label: Text(
-                      'Complete Trip',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
+                  )
+                else
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: onCompleteRide,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.check_circle_outline_rounded,
                         color: AppColors.textDark,
+                        size: 20,
+                      ),
+                      label: Text(
+                        'Complete Trip',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textDark,
+                        ),
                       ),
                     ),
                   ),
-                ),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,

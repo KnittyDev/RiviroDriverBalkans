@@ -3,6 +3,8 @@ import '../../theme/app_theme.dart';
 import '../../widgets/withdraw_modal.dart';
 import 'widgets/profile_header.dart';
 import 'widgets/balance_card.dart';
+import 'widgets/location_battery_card.dart';
+import 'widgets/role_selector_card.dart';
 import 'widgets/stats_grid.dart';
 import 'widgets/daily_income_chart.dart';
 
@@ -29,10 +31,8 @@ class ProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Header (Avatar, Hello David, Notification icon)
-              const ProfileHeader(
-                name: 'David!',
-              ),
+              // 1. Header (Avatar, Hello [Driver Name], Settings icon)
+              const ProfileHeader(),
               const SizedBox(height: 14),
 
               // 2. Balance Card with Integrated Withdraw Modal
@@ -42,6 +42,14 @@ class ProfileScreen extends StatelessWidget {
                   WithdrawModal.show(context, availableBalance: '1.245€');
                 },
               ),
+              const SizedBox(height: 12),
+
+              // 3. Live Location (Lat & Long) & Battery Saver Settings Card
+              const LocationBatteryCard(),
+              const SizedBox(height: 12),
+
+              // 4. Role Selector Card (Driver, Rider, Admin)
+              const RoleSelectorCard(),
               const SizedBox(height: 12),
 
               // 3. Bento Grid (Rating, Trips today, Your car, Tips today)
