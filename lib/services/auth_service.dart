@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'profile_service.dart';
 
 class DriverProfileModel {
   final String id;
@@ -14,6 +15,7 @@ class DriverProfileModel {
   final bool isOnline;
   final double? currentLat;
   final double? currentLng;
+  final String? avatarUrl;
 
   DriverProfileModel({
     required this.id,
@@ -24,6 +26,7 @@ class DriverProfileModel {
     this.isOnline = false,
     this.currentLat,
     this.currentLng,
+    this.avatarUrl,
   });
 
   factory DriverProfileModel.fromJson(Map<String, dynamic> json) {
@@ -36,6 +39,7 @@ class DriverProfileModel {
       isOnline: json['is_online'] == true || json['isOnline'] == true,
       currentLat: json['current_lat'] != null ? (json['current_lat'] as num).toDouble() : null,
       currentLng: json['current_lng'] != null ? (json['current_lng'] as num).toDouble() : null,
+      avatarUrl: json['avatar_url'] as String?,
     );
   }
 
@@ -49,6 +53,7 @@ class DriverProfileModel {
       'is_online': isOnline,
       'current_lat': currentLat,
       'current_lng': currentLng,
+      'avatar_url': avatarUrl,
     };
   }
 
@@ -61,6 +66,7 @@ class DriverProfileModel {
     bool? isOnline,
     double? currentLat,
     double? currentLng,
+    String? avatarUrl,
   }) {
     return DriverProfileModel(
       id: id ?? this.id,
@@ -71,6 +77,7 @@ class DriverProfileModel {
       isOnline: isOnline ?? this.isOnline,
       currentLat: currentLat ?? this.currentLat,
       currentLng: currentLng ?? this.currentLng,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
     );
   }
 }
@@ -148,7 +155,7 @@ class AuthService {
       if (savedJson != null && savedJson.isNotEmpty) {
         final Map<String, dynamic> map = jsonDecode(savedJson);
         final profile = DriverProfileModel.fromJson(map);
-        currentDriverNotifier.value = profile;
+        await setCurrentDriver(profile);
         debugPrint('👤 [AuthService] Loaded saved driver session: ${profile.fullName} (${profile.id})');
         return;
       }
@@ -176,6 +183,7 @@ class AuthService {
   /// Saves the active driver session locally and updates reactive notifier
   static Future<void> setCurrentDriver(DriverProfileModel profile) async {
     currentDriverNotifier.value = profile;
+    ProfileService.initFromDriver(profile);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefKey, jsonEncode(profile.toJson()));

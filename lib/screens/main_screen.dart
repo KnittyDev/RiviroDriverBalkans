@@ -8,6 +8,7 @@ import '../services/battery_optimization_service.dart';
 import '../services/supabase_location_tracker_service.dart';
 import '../services/auth_service.dart';
 import '../services/hot_potato_dispatch_service.dart';
+import '../services/review_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -33,6 +34,7 @@ class _MainScreenState extends State<MainScreen> {
     // 3. Automatically prompt Power Saver / Battery Optimization dialog on launch
     // 4. Start 50-meter Supabase Location Tracker
     // 5. Start Hot Potato Dispatch Realtime Listener for incoming ride offers
+    // 6. Check and prompt unreviewed completed rides
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await AuthService.initSavedDriverSession();
       final hasLocation = await LocationService().initAndRequestLocationPermission();
@@ -42,6 +44,7 @@ class _MainScreenState extends State<MainScreen> {
       if (mounted) {
         BatteryOptimizationService.checkAndPromptBatteryOptimizationOnStartup(context);
         HotPotatoDispatchService().startListening(context);
+        ReviewService.checkAndPromptPendingReview(context);
       }
     });
   }

@@ -11,6 +11,7 @@ class ActiveRideCard extends StatelessWidget {
   final RideCardType cardType;
   final String rideStatus; // 'accepted', 'on_the_way', 'arrived', 'in_progress'
   final String passengerName;
+  final String? passengerAvatarUrl;
   final String passengerRating;
   final String fare;
   final String distance;
@@ -35,6 +36,7 @@ class ActiveRideCard extends StatelessWidget {
     this.cardType = RideCardType.upcoming,
     this.rideStatus = 'accepted',
     this.passengerName = 'Sophia M.',
+    this.passengerAvatarUrl,
     this.passengerRating = '4.9',
     this.fare = '18.50€',
     this.distance = '4.2 km',
@@ -183,14 +185,29 @@ class ActiveRideCard extends StatelessWidget {
               Container(
                 width: 44,
                 height: 44,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: AppColors.primarySubtle,
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.4), width: 1.5),
                 ),
-                child: const Icon(
-                  Icons.person_rounded,
-                  color: AppColors.textDark,
-                  size: 26,
+                child: ClipOval(
+                  child: (passengerAvatarUrl != null && passengerAvatarUrl!.isNotEmpty)
+                      ? Image.network(
+                          passengerAvatarUrl!,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => const Icon(
+                            Icons.person_rounded,
+                            color: AppColors.textDark,
+                            size: 26,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.person_rounded,
+                          color: AppColors.textDark,
+                          size: 26,
+                        ),
                 ),
               ),
               const SizedBox(width: 12),

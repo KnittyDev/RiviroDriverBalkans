@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../services/driver_stats_service.dart';
 import '../../../theme/app_theme.dart';
 
 enum IncomeTimeframe { daily, weekly, monthly }
@@ -15,65 +16,72 @@ class _DailyIncomeChartState extends State<DailyIncomeChart> {
   IncomeTimeframe _selectedTimeframe = IncomeTimeframe.daily;
 
   List<_ChartBarData> get _currentData {
+    final stats = DriverStatsService.statsNotifier.value;
+
     switch (_selectedTimeframe) {
       case IncomeTimeframe.daily:
-        return [
-          _ChartBarData('09', 0.25, isLow: true),
-          _ChartBarData('10', 0.45),
-          _ChartBarData('11', 0.35),
-          _ChartBarData('12', 0.75),
-          _ChartBarData('13', 0.60),
-          _ChartBarData('14', 0.85),
-          _ChartBarData('15', 0.50),
-          _ChartBarData('16', 0.55),
-          _ChartBarData('17', 0.20, isLow: true),
-          _ChartBarData('18', 0.30, isLow: true),
-          _ChartBarData('19', 0.80),
-          _ChartBarData('20', 0.50),
-        ];
+        final hours = ['09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'];
+        double maxHourly = 1.0;
+        for (final h in hours) {
+          final val = stats.hourlyEarningsToday[h] ?? 0.0;
+          if (val > maxHourly) maxHourly = val;
+        }
+        return hours.map((h) {
+          final val = stats.hourlyEarningsToday[h] ?? 0.0;
+          final ratio = stats.earningsToday > 0 ? (val / maxHourly).clamp(0.08, 1.0) : 0.25;
+          return _ChartBarData(h, ratio, isLow: ratio < 0.3);
+        }).toList();
+
       case IncomeTimeframe.weekly:
-        return [
-          _ChartBarData('Mon', 0.50),
-          _ChartBarData('Tue', 0.65),
-          _ChartBarData('Wed', 0.40, isLow: true),
-          _ChartBarData('Thu', 0.75),
-          _ChartBarData('Fri', 0.95),
-          _ChartBarData('Sat', 0.90),
-          _ChartBarData('Sun', 0.60),
-        ];
+        final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        double maxDay = 1.0;
+        for (final d in days) {
+          final val = stats.weeklyDayEarnings[d] ?? 0.0;
+          if (val > maxDay) maxDay = val;
+        }
+        return days.map((d) {
+          final val = stats.weeklyDayEarnings[d] ?? 0.0;
+          final ratio = maxDay > 1.0 ? (val / maxDay).clamp(0.08, 1.0) : 0.45;
+          return _ChartBarData(d, ratio, isLow: ratio < 0.3);
+        }).toList();
+
       case IncomeTimeframe.monthly:
-        return [
-          _ChartBarData('Jan', 0.55),
-          _ChartBarData('Feb', 0.60),
-          _ChartBarData('Mar', 0.70),
-          _ChartBarData('Apr', 0.65),
-          _ChartBarData('May', 0.80),
-          _ChartBarData('Jun', 0.85),
-          _ChartBarData('Jul', 0.90),
-          _ChartBarData('Aug', 0.75),
-          _ChartBarData('Sep', 0.65),
-          _ChartBarData('Oct', 0.70),
-          _ChartBarData('Nov', 0.85),
-          _ChartBarData('Dec', 0.95),
-        ];
+        final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        double maxMonth = 1.0;
+        for (final m in months) {
+          final val = stats.monthlyEarnings[m] ?? 0.0;
+          if (val > maxMonth) maxMonth = val;
+        }
+        return months.map((m) {
+          final val = stats.monthlyEarnings[m] ?? 0.0;
+          final ratio = maxMonth > 1.0 ? (val / maxMonth).clamp(0.08, 1.0) : 0.55;
+          return _ChartBarData(m, ratio, isLow: ratio < 0.3);
+        }).toList();
     }
   }
 
   String get _totalIncome {
+    final stats = DriverStatsService.statsNotifier.value;
     switch (_selectedTimeframe) {
       case IncomeTimeframe.daily:
-        return '124.50€';
+        return '${stats.earningsToday.toStringAsFixed(2)}€';
       case IncomeTimeframe.weekly:
-        return '842.00€';
+        double weekSum = 0.0;
+        for (final v in stats.weeklyDayEarnings.values) {
+          weekSum += v;
+        }
+        return '${(weekSum > 0 ? weekSum : stats.totalBalance).toStringAsFixed(2)}€';
       case IncomeTimeframe.monthly:
-        return '3,450.00€';
+        return '${stats.totalBalance.toStringAsFixed(2)}€';
     }
   }
 
   String get _yMaxLabel {
+    final stats = DriverStatsService.statsNotifier.value;
     switch (_selectedTimeframe) {
       case IncomeTimeframe.daily:
-        return '1000€';
+        final max = (stats.earningsToday * 1.5).clamp(50.0, 1000.0);
+        return '${max.toInt()}€';
       case IncomeTimeframe.weekly:
         return '1500€';
       case IncomeTimeframe.monthly:
@@ -82,9 +90,11 @@ class _DailyIncomeChartState extends State<DailyIncomeChart> {
   }
 
   String get _yMidLabel {
+    final stats = DriverStatsService.statsNotifier.value;
     switch (_selectedTimeframe) {
       case IncomeTimeframe.daily:
-        return '500€';
+        final mid = (stats.earningsToday * 0.75).clamp(25.0, 500.0);
+        return '${mid.toInt()}€';
       case IncomeTimeframe.weekly:
         return '750€';
       case IncomeTimeframe.monthly:

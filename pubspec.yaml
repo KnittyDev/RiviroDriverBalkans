@@ -51,6 +51,8 @@ dependencies:
   intl_phone_field: ^3.2.0
   shared_preferences: ^2.5.2
   supabase_flutter: ^2.8.3
+  crypto: ^3.0.3
+  encrypt: ^5.0.3
 
 dev_dependencies:
   flutter_test:

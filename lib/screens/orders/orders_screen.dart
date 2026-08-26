@@ -12,6 +12,7 @@ import 'widgets/order_item_card.dart';
 import '../../widgets/rider_contact_modal.dart';
 import '../../widgets/rider_chat_modal.dart';
 import '../../widgets/trip_review_modal.dart';
+import '../../services/driver_stats_service.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -276,8 +277,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
           final dropoff = ride['destination_address'] ?? 'Destination Location';
           final payment = ride['payment_method'] ?? 'Online';
           final status = (ride['status'] ?? 'searching').toString();
-
           final isOngoing = status == 'accepted' || status == 'on_the_way' || status == 'in_progress' || status == 'arrived';
+          final passengerAvatar = ride['passenger_avatar_url'] as String?;
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 14),
@@ -285,6 +286,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
               cardType: isOngoing ? RideCardType.ongoing : RideCardType.upcoming,
               rideStatus: status,
               passengerName: passengerName,
+              passengerAvatarUrl: passengerAvatar,
               passengerRating: '5.0',
               fare: fareStr,
               distance: '2.4 km',
@@ -295,16 +297,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
               onCallPassenger: () {
                 RiderContactModal.show(
                   context,
+                  rideId: rideId,
                   passengerName: passengerName,
                   passengerRating: '5.0',
-                  phoneNumber: ride['passenger_phone'] ?? '+355 69 123 4567',
+                  phoneNumber: ride['passenger_phone'] ?? '',
+                  passengerAvatarUrl: passengerAvatar,
                 );
               },
               onMessagePassenger: () {
                 RiderChatModal.show(
                   context,
+                  rideId: rideId,
                   passengerName: passengerName,
                   passengerRating: '5.0',
+                  passengerPhone: ride['passenger_phone'] ?? '',
+                  passengerAvatarUrl: passengerAvatar,
                 );
               },
               onArrivedAtPickup: () async {
@@ -335,7 +342,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'Ride Started! In progress.',
+                        'Ride Started!',
                         style: GoogleFonts.poppins(fontSize: 12.5),
                       ),
                       backgroundColor: const Color(0xFF22C55E),
@@ -349,10 +356,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     .update({'status': 'completed', 'updated_at': DateTime.now().toUtc().toIso8601String()})
                     .eq('id', rideId);
                 _fetchRidesFromSupabase();
+                DriverStatsService.fetchDriverLiveStats();
                 if (mounted) {
                   TripReviewModal.show(
                     context,
+                    rideId: rideId,
                     passengerName: passengerName,
+                    passengerAvatarUrl: passengerAvatar,
                     fare: fareStr,
                     tripId: '#TR-${rideId.substring(0, 4).toUpperCase()}',
                   );
@@ -366,6 +376,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       rideId: rideId,
                       initialStatus: status,
                       passengerName: passengerName,
+                      passengerPhone: ride['passenger_phone'] ?? '',
+                      passengerAvatarUrl: passengerAvatar,
                       pickupAddress: pickup,
                       dropoffAddress: dropoff,
                       paymentMethod: payment,
@@ -449,8 +461,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
           final tripShortId = '#TR-${rideId.length >= 4 ? rideId.substring(0, 4).toUpperCase() : '0000'}';
 
           return OrderItemCard(
+            rideId: rideId,
             date: dateFormatted,
             passengerName: order['passenger_name'] ?? 'Passenger',
+            passengerAvatarUrl: order['passenger_avatar_url'],
             passengerRating: '5.0',
             pickup: order['pickup_address'] ?? 'Pickup Location',
             dropoff: order['destination_address'] ?? 'Destination Location',

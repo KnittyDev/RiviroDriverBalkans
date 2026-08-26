@@ -3,7 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
+import '../../services/review_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/driver_reviews_modal.dart';
 import 'pages/vehicle_settings_screen.dart';
 import 'pages/iban_payout_settings_screen.dart';
 import 'pages/driver_license_screen.dart';
@@ -27,11 +29,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoNavigationEnabled = true;
   String _selectedLanguage = 'English';
   String _appVersion = 'v1.0.0 (Build 1)';
+  String _driverRating = '5.0';
 
   @override
   void initState() {
     super.initState();
     _loadPackageInfo();
+    _loadDriverRating();
+  }
+
+  Future<void> _loadDriverRating() async {
+    final driverId = AuthService.currentDriverNotifier.value?.id;
+    if (driverId != null && driverId.isNotEmpty) {
+      final avg = await ReviewService.fetchDriverAverageRating(driverId);
+      if (avg != null && mounted) {
+        setState(() {
+          _driverRating = avg.toStringAsFixed(1);
+        });
+      }
+    }
   }
 
   Future<void> _loadPackageInfo() async {
@@ -242,6 +258,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
                             ],
+                            const SizedBox(height: 6),
+                            // See Ratings Pill Button
+                            GestureDetector(
+                              onTap: () => DriverReviewsModal.show(context),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primarySubtle,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF59E0B)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$_driverRating ★ • See Ratings',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textDark,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(Icons.arrow_forward_ios_rounded, size: 9, color: AppColors.textDark),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ],
                         );
                       },
@@ -252,10 +298,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 2. Driver Tips
-            _buildSectionTitle('Driver Tips'),
+            // 2. Performance & Ratings
+            _buildSectionTitle('Performance & Ratings'),
             const SizedBox(height: 10),
             _buildSettingsContainer([
+              _buildSimpleTile(
+                title: 'Ratings & Reviews',
+                subtitle: '$_driverRating ★ • View passenger feedback & compliments',
+                icon: Icons.star_rounded,
+                onTap: () => DriverReviewsModal.show(context),
+              ),
+              const Divider(color: AppColors.border, height: 1),
               _buildSimpleTile(
                 title: 'Get More Rides',
                 subtitle: 'Tips on ratings, chargers & peak hours',

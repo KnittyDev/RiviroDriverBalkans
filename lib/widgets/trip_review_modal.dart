@@ -1,32 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:vibration/vibration.dart';
+import '../services/review_service.dart';
 import '../theme/app_theme.dart';
 
 class TripReviewModal extends StatefulWidget {
+  final String rideId;
   final String passengerName;
+  final String? passengerAvatarUrl;
+  final String? passengerId;
   final String fare;
   final String tripId;
 
   const TripReviewModal({
     super.key,
-    this.passengerName = 'Marcus Vance',
+    this.rideId = '',
+    this.passengerName = 'Passenger',
+    this.passengerAvatarUrl,
+    this.passengerId,
     this.fare = '24.50€',
     this.tripId = '#TR-8921',
   });
 
-  static void show(
+  static Future<bool?> show(
     BuildContext context, {
-    String passengerName = 'Marcus Vance',
+    String rideId = '',
+    String passengerName = 'Passenger',
+    String? passengerAvatarUrl,
+    String? passengerId,
     String fare = '24.50€',
     String tripId = '#TR-8921',
   }) {
-    showModalBottomSheet(
+    return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => TripReviewModal(
+        rideId: rideId,
         passengerName: passengerName,
+        passengerAvatarUrl: passengerAvatarUrl,
+        passengerId: passengerId,
         fare: fare,
         tripId: tripId,
       ),
@@ -40,18 +53,31 @@ class TripReviewModal extends StatefulWidget {
 class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProviderStateMixin {
   int _selectedRating = 5;
   final TextEditingController _commentController = TextEditingController();
-  final Set<String> _selectedTags = {'🤝 Polite Passenger', '⏰ On Time'};
+  final Set<String> _selectedTags = {'Polite 🤝', 'On Time ⏱️'};
+  bool _isSubmitting = false;
 
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
 
-  final List<String> _quickTags = [
-    '🤝 Polite Passenger',
-    '⏰ On Time',
-    '✨ Respectful Vehicle',
-    '💶 Great Tipper',
-    '🚗 Easy Pickup Location',
-  ];
+  List<String> get _currentQuickTags {
+    if (_selectedRating >= 4) {
+      return [
+        'Polite 🤝',
+        'On Time ⏱️',
+        'Clean ✨',
+        'Friendly 😊',
+        'Smooth Trip 🚗',
+      ];
+    } else {
+      return [
+        'Late ⏱️',
+        'Impolite 🙁',
+        'Mess in Car 🧼',
+        'Route Demands 🗺️',
+        'Unresponsive 📱',
+      ];
+    }
+  }
 
   @override
   void initState() {
@@ -77,6 +103,9 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
 
   void _onStarTapped(int rating) {
     setState(() {
+      if ((_selectedRating >= 4 && rating < 4) || (_selectedRating < 4 && rating >= 4)) {
+        _selectedTags.clear();
+      }
       _selectedRating = rating;
     });
 
@@ -94,7 +123,7 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
   String get _ratingLabel {
     switch (_selectedRating) {
       case 1:
-        return 'Bad Experience 😡';
+        return 'Difficult Passenger 😡';
       case 2:
         return 'Below Expectations 🙁';
       case 3:
@@ -107,27 +136,68 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
     }
   }
 
-  void _submitReview() {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Review submitted for ${widget.passengerName} ($_selectedRating Stars)!',
-                style: GoogleFonts.poppins(fontSize: 12.5),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.textDark,
-        duration: const Duration(seconds: 3),
-      ),
+  Future<void> _submitReview() async {
+    if (_isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final success = await ReviewService.submitPassengerReview(
+      rideId: widget.rideId,
+      passengerId: widget.passengerId,
+      rating: _selectedRating.toDouble(),
+      feedbackTags: _selectedTags.toList(),
+      comment: _commentController.text,
     );
+
+    if (mounted) {
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      if (success) {
+        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Review submitted for ${widget.passengerName} ($_selectedRating Stars)!',
+                    style: GoogleFonts.poppins(fontSize: 12.5, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.textDark,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to submit review. Please try again.',
+              style: GoogleFonts.poppins(fontSize: 12.5),
+            ),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        );
+      }
+    }
+  }
+
+  void _skipReview() {
+    ReviewService.dismissPassengerReview(rideId: widget.rideId);
+    Navigator.pop(context, false);
   }
 
   @override
@@ -188,9 +258,16 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
                     ),
                   ],
                 ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
+                TextButton(
+                  onPressed: _skipReview,
+                  child: Text(
+                    'Skip',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -208,14 +285,28 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
               child: Row(
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 46,
+                    height: 46,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: AppColors.primarySubtle,
-                      border: Border.all(color: AppColors.primary, width: 1.2),
+                      border: Border.all(color: AppColors.primary, width: 1.5),
                     ),
-                    child: const Icon(Icons.person_rounded, size: 26, color: AppColors.textDark),
+                    child: ClipOval(
+                      child: (widget.passengerAvatarUrl != null && widget.passengerAvatarUrl!.isNotEmpty)
+                          ? Image.network(
+                              widget.passengerAvatarUrl!,
+                              width: 46,
+                              height: 46,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => const Icon(
+                                Icons.person_rounded,
+                                size: 28,
+                                color: AppColors.textDark,
+                              ),
+                            )
+                          : const Icon(Icons.person_rounded, size: 28, color: AppColors.textDark),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -259,7 +350,7 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
 
             // Animated Tactile Wiggling Star Selector
             Text(
-              'How was your ride with ${widget.passengerName}?',
+              'How was your trip with ${widget.passengerName}?',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
                 fontSize: 13,
@@ -318,7 +409,7 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Quick Feedback Tags',
+                _selectedRating >= 4 ? 'What went well? ✨' : 'What could be improved? 🛠️',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -331,7 +422,8 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _quickTags.map((tag) {
+              alignment: WrapAlignment.center,
+              children: _currentQuickTags.map((tag) {
                 final isSelected = _selectedTags.contains(tag);
                 return GestureDetector(
                   onTap: () {
@@ -344,22 +436,22 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
                     });
                   },
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7.5),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.primarySubtle : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(16),
+                      color: isSelected ? AppColors.primary : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isSelected ? AppColors.primary : AppColors.border,
+                        color: isSelected ? AppColors.primary : const Color(0xFFE2E8F0),
                         width: 1.2,
                       ),
                     ),
                     child: Text(
                       tag,
                       style: GoogleFonts.poppins(
-                        fontSize: 11.5,
+                        fontSize: 12,
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: AppColors.textDark,
+                        color: isSelected ? Colors.white : AppColors.textDark,
                       ),
                     ),
                   ),
@@ -372,7 +464,7 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Optional Comment',
+                'Optional Note',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -387,7 +479,7 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
               maxLines: 3,
               style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textDark),
               decoration: InputDecoration(
-                hintText: 'Write a comment for the rider (optional)...',
+                hintText: 'Write a note about the passenger (optional)...',
                 hintStyle: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textMuted),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
@@ -413,15 +505,21 @@ class _TripReviewModalState extends State<TripReviewModal> with SingleTickerProv
               width: double.infinity,
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: _submitReview,
+                onPressed: _isSubmitting ? null : _submitReview,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.textDark,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                icon: const Icon(Icons.check_rounded, color: Colors.white, size: 20),
+                icon: _isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.check_rounded, color: Colors.white, size: 20),
                 label: Text(
-                  'Submit Review',
+                  _isSubmitting ? 'Submitting...' : 'Submit Rating',
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,

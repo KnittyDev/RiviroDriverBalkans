@@ -26,6 +26,7 @@ class RideOfferModel {
   final String paymentMethod;
   final String passengerName;
   final String passengerPhone;
+  final String? passengerAvatarUrl;
 
   RideOfferModel({
     required this.offerId,
@@ -45,6 +46,7 @@ class RideOfferModel {
     this.paymentMethod = 'Cash',
     this.passengerName = 'Customer',
     this.passengerPhone = '',
+    this.passengerAvatarUrl,
   });
 }
 
@@ -197,7 +199,8 @@ class HotPotatoDispatchService {
         rideType: rideData['ride_type'] ?? 'Standard Ride',
         paymentMethod: rideData['payment_method'] ?? 'Cash',
         passengerName: rideData['passenger_name'] ?? 'Arif CAN',
-        passengerPhone: rideData['passenger_phone'] ?? '+355 69 123 4567',
+        passengerPhone: rideData['passenger_phone'] ?? '',
+        passengerAvatarUrl: rideData['passenger_avatar_url'],
       );
 
       // Play sound and trigger vibration alert

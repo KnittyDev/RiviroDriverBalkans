@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
+import '../../services/driver_stats_service.dart';
 import '../../services/supabase_location_tracker_service.dart';
 import '../../services/hot_potato_dispatch_service.dart';
 import '../../theme/app_theme.dart';
@@ -19,31 +22,104 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   double _selectedRadiusKm = 10.0; // Default service radius in km
+  List<Map<String, dynamic>> _recentTrips = [];
+  bool _isLoadingTrips = true;
+  RealtimeChannel? _homeRidesChannel;
 
-  final List<Map<String, String>> _recentTrips = const [
-    {
-      'date': 'Today, 12:45 PM',
-      'passenger': 'Marcus Vance',
-      'rating': '5.0',
-      'pickup': 'Central Park South, 4th Ave',
-      'dropoff': 'Grand Hyatt Hotel, Central St.',
-      'fare': '+24.50€',
-      'distance': '6.4 km',
-      'duration': '18 min',
-      'tripId': '#TR-8921',
-    },
-    {
-      'date': 'Today, 10:15 AM',
-      'passenger': 'Elena Rostova',
-      'rating': '4.9',
-      'pickup': 'Airport Terminal 1, Gate B',
-      'dropoff': 'West End Financial Sq.',
-      'fare': '+38.00€',
-      'distance': '14.2 km',
-      'duration': '28 min',
-      'tripId': '#TR-8919',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadHomeData();
+    _subscribeToRidesRealtime();
+  }
+
+  @override
+  void dispose() {
+    if (_homeRidesChannel != null) {
+      Supabase.instance.client.removeChannel(_homeRidesChannel!);
+    }
+    super.dispose();
+  }
+
+  void _subscribeToRidesRealtime() {
+    _homeRidesChannel = Supabase.instance.client
+        .channel('public:rides:home_screen')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'rides',
+          callback: (payload) {
+            _loadHomeData(isBackground: true);
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _loadHomeData({bool isBackground = false}) async {
+    final driverId = AuthService.currentDriverNotifier.value?.id ??
+        Supabase.instance.client.auth.currentUser?.id;
+
+    if (!isBackground && mounted) {
+      setState(() {
+        _isLoadingTrips = true;
+      });
+    }
+
+    try {
+      DriverStatsService.fetchDriverLiveStats(driverId);
+
+      var filterBuilder = Supabase.instance.client
+          .from('rides')
+          .select()
+          .inFilter('status', ['completed', 'finished']);
+
+      if (driverId != null && driverId.isNotEmpty) {
+        filterBuilder = filterBuilder.or('driver_id.eq.$driverId,assigned_driver_id.eq.$driverId');
+      }
+
+      final response = await filterBuilder
+          .order('created_at', ascending: false)
+          .limit(10);
+      final List<Map<String, dynamic>> fetched = List<Map<String, dynamic>>.from(response);
+
+      if (mounted) {
+        setState(() {
+          _recentTrips = fetched;
+          _isLoadingTrips = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ [HomeScreen] Error loading recent trips: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingTrips = false;
+        });
+      }
+    }
+  }
+
+  String _formatDateTime(dynamic timestamp) {
+    if (timestamp == null) return 'Recently';
+    try {
+      final DateTime dt = DateTime.parse(timestamp.toString()).toLocal();
+      final DateTime now = DateTime.now();
+      final difference = now.difference(dt);
+
+      final hourStr = dt.hour.toString().padLeft(2, '0');
+      final minuteStr = dt.minute.toString().padLeft(2, '0');
+      final timeStr = '$hourStr:$minuteStr';
+
+      if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+        return 'Today, $timeStr';
+      } else if (difference.inDays == 1 || (dt.year == now.year && dt.month == now.month && dt.day == now.day - 1)) {
+        return 'Yesterday, $timeStr';
+      } else {
+        return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}, $timeStr';
+      }
+    } catch (_) {
+      return 'Recently';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,106 +129,196 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.only(
-            left: 18,
-            right: 18,
-            top: 14,
-            bottom: safeBottomInset,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. Hello Driver Header
-              const HomeHeader(),
-              const SizedBox(height: 18),
+        child: RefreshIndicator(
+          onRefresh: () => _loadHomeData(),
+          color: AppColors.textDark,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: EdgeInsets.only(
+              left: 18,
+              right: 18,
+              top: 14,
+              bottom: safeBottomInset,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Hello Driver Header
+                const HomeHeader(),
+                const SizedBox(height: 18),
 
-              // 2. Online / Offline Status Toggle Card (Connected to Supabase)
-              ValueListenableBuilder<DriverProfileModel?>(
-                valueListenable: AuthService.currentDriverNotifier,
-                builder: (context, driver, child) {
-                  final isOnline = driver?.isOnline ?? true;
-                  return StatusToggleCard(
-                    isOnline: isOnline,
-                    onToggle: (value) async {
-                      await AuthService.updateOnlineStatus(value);
-                      if (value) {
-                        SupabaseLocationTrackerService().startLocationTracking();
-                      }
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            value
-                                ? 'You are now Online! Location tracking active.'
-                                : 'You are now Offline. Location tracking paused.',
-                            style: GoogleFonts.poppins(fontSize: 12.5),
+                // 2. Online / Offline Status Toggle Card (Connected to Supabase)
+                ValueListenableBuilder<DriverProfileModel?>(
+                  valueListenable: AuthService.currentDriverNotifier,
+                  builder: (context, driver, child) {
+                    final isOnline = driver?.isOnline ?? true;
+                    return StatusToggleCard(
+                      isOnline: isOnline,
+                      onToggle: (value) async {
+                        await AuthService.updateOnlineStatus(value);
+                        if (value) {
+                          SupabaseLocationTrackerService().startLocationTracking();
+                        }
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              value
+                                  ? 'You are now Online! Location tracking active.'
+                                  : 'You are now Offline. Location tracking paused.',
+                              style: GoogleFonts.poppins(fontSize: 12.5),
+                            ),
+                            backgroundColor: value ? AppColors.textDark : Colors.grey.shade800,
+                            duration: const Duration(seconds: 2),
                           ),
-                          backgroundColor: value ? AppColors.textDark : Colors.grey.shade800,
-                          duration: const Duration(seconds: 2),
+                        );
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // 3. Pickup Service Radius Selector Card (1 km to 15 km)
+                RadiusSelectorCard(
+                  currentRadiusKm: _selectedRadiusKm,
+                  onRadiusChanged: (newRadius) {
+                    setState(() {
+                      _selectedRadiusKm = newRadius;
+                    });
+                    HotPotatoDispatchService.updateServiceRadius(newRadius);
+                  },
+                ),
+                const SizedBox(height: 18),
+
+                // 4. Quick Stats Strip (Earnings, Trips, Online Time)
+                Text(
+                  'Today\'s Summary',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ValueListenableBuilder<DriverStatsModel>(
+                  valueListenable: DriverStatsService.statsNotifier,
+                  builder: (context, stats, child) {
+                    return QuickStatsStrip(
+                      todayEarnings: '${stats.earningsToday.toStringAsFixed(2)}€',
+                      todayTrips: '${stats.tripsToday} Trips',
+                      onlineTime: '3h 45m',
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // 5. Recent Trips Section
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Recent Trips',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    if (_recentTrips.isNotEmpty)
+                      Text(
+                        '${_recentTrips.length} completed',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
                         ),
-                      );
-                    },
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // 3. Pickup Service Radius Selector Card (1 km to 15 km)
-              RadiusSelectorCard(
-                currentRadiusKm: _selectedRadiusKm,
-                onRadiusChanged: (newRadius) {
-                  setState(() {
-                    _selectedRadiusKm = newRadius;
-                  });
-                  HotPotatoDispatchService.updateServiceRadius(newRadius);
-                },
-              ),
-              const SizedBox(height: 18),
-
-              // 4. Quick Stats Strip (Earnings, Trips, Online Time)
-              Text(
-                'Today\'s Summary',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
+                      ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 10),
-              const QuickStatsStrip(
-                todayEarnings: '124.50€',
-                todayTrips: '8 Trips',
-                onlineTime: '4h 12m',
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 12),
 
-              // 5. Recent Trips Section
-              Text(
-                'Recent Trips',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ..._recentTrips.map(
-                (trip) => OrderItemCard(
-                  date: trip['date']!,
-                  passengerName: trip['passenger']!,
-                  passengerRating: trip['rating']!,
-                  pickup: trip['pickup']!,
-                  dropoff: trip['dropoff']!,
-                  fare: trip['fare']!,
-                  distance: trip['distance']!,
-                  duration: trip['duration']!,
-                  tripId: trip['tripId']!,
-                ),
-              ),
-            ],
+                if (_isLoadingTrips)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  )
+                else if (_recentTrips.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primarySubtle,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.history_rounded,
+                            size: 24,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'No Recent Trips Yet',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Completed rides will appear here automatically.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11.5,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ..._recentTrips.map((order) {
+                    final rideId = order['id']?.toString() ?? '';
+                    final fareNum = (order['fare_amount'] as num?)?.toDouble() ?? 0.0;
+                    final fareStr = '+${fareNum.toStringAsFixed(2)}€';
+                    final dateFormatted = _formatDateTime(order['created_at']);
+                    final tripShortId = '#TR-${rideId.length >= 4 ? rideId.substring(0, 4).toUpperCase() : '0000'}';
+
+                    return OrderItemCard(
+                      rideId: rideId,
+                      date: dateFormatted,
+                      passengerName: order['passenger_name'] ?? 'Passenger',
+                      passengerAvatarUrl: order['passenger_avatar_url'],
+                      passengerRating: '5.0',
+                      pickup: order['pickup_address'] ?? 'Pickup Location',
+                      dropoff: order['destination_address'] ?? 'Destination Location',
+                      fare: fareStr,
+                      distance: '6.4 km',
+                      duration: '18 min',
+                      tripId: tripShortId,
+                      paymentMethod: order['payment_method'] ?? 'Online',
+                    );
+                  }),
+              ],
+            ),
           ),
         ),
       ),

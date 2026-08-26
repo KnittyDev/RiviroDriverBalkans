@@ -30,10 +30,11 @@ class ProfileHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // Driver Avatar (Tapping avatar opens Settings or photo picker)
+        // Driver Avatar (Tapping avatar opens photo picker sheet)
         ProfileService.buildAvatarWidget(
-          size: 48,
-          onTap: () => _openSettings(context),
+          size: 52,
+          showCameraBadge: true,
+          onTap: () => ProfileService.showPhotoOptionsBottomSheet(context),
         ),
         const SizedBox(width: 12),
         // Greeting & Name

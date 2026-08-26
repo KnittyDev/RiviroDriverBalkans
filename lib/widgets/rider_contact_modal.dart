@@ -2,48 +2,124 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 
-class RiderContactModal extends StatelessWidget {
+class RiderContactModal extends StatefulWidget {
+  final String? rideId;
   final String passengerName;
   final String passengerRating;
   final String phoneNumber;
+  final String? passengerAvatarUrl;
 
   const RiderContactModal({
     super.key,
-    this.passengerName = 'Sophia M.',
-    this.passengerRating = '4.9',
-    this.phoneNumber = '+48 512 345 678',
+    this.rideId,
+    this.passengerName = 'Customer',
+    this.passengerRating = '5.0',
+    this.phoneNumber = '',
+    this.passengerAvatarUrl,
   });
 
   static void show(
     BuildContext context, {
-    String passengerName = 'Sophia M.',
-    String passengerRating = '4.9',
-    String phoneNumber = '+48 512 345 678',
+    String? rideId,
+    String passengerName = 'Customer',
+    String passengerRating = '5.0',
+    String phoneNumber = '',
+    String? passengerAvatarUrl,
   }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => RiderContactModal(
+        rideId: rideId,
         passengerName: passengerName,
         passengerRating: passengerRating,
         phoneNumber: phoneNumber,
+        passengerAvatarUrl: passengerAvatarUrl,
       ),
     );
   }
 
-  String get _cleanPhoneNumber => phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
+  @override
+  State<RiderContactModal> createState() => _RiderContactModalState();
+}
+
+class _RiderContactModalState extends State<RiderContactModal> {
+  late String _passengerName;
+  late String _passengerRating;
+  late String _phoneNumber;
+  String? _passengerAvatarUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _passengerName = widget.passengerName;
+    _passengerRating = widget.passengerRating;
+    _phoneNumber = widget.phoneNumber;
+    _passengerAvatarUrl = widget.passengerAvatarUrl;
+    _fetchRealPassengerDetails();
+  }
+
+  Future<void> _fetchRealPassengerDetails() async {
+    if (widget.rideId == null || widget.rideId!.isEmpty) return;
+
+    try {
+      final rideRow = await Supabase.instance.client
+          .from('rides')
+          .select('user_id, passenger_name, passenger_phone, passenger_avatar_url')
+          .eq('id', widget.rideId!)
+          .maybeSingle();
+
+      if (rideRow != null) {
+        String? fetchedPhone = rideRow['passenger_phone']?.toString();
+        String? fetchedName = rideRow['passenger_name']?.toString();
+        String? fetchedAvatar = rideRow['passenger_avatar_url']?.toString();
+
+        final userId = rideRow['user_id']?.toString();
+        if (userId != null && userId.isNotEmpty) {
+          final profileRow = await Supabase.instance.client
+              .from('profiles')
+              .select('full_name, phone_number, avatar_url')
+              .eq('id', userId)
+              .maybeSingle();
+
+          if (profileRow != null) {
+            final pPhone = profileRow['phone_number']?.toString();
+            final pName = profileRow['full_name']?.toString();
+            final pAvatar = profileRow['avatar_url']?.toString();
+
+            if (pPhone != null && pPhone.isNotEmpty) fetchedPhone = pPhone;
+            if (pName != null && pName.isNotEmpty) fetchedName = pName;
+            if (pAvatar != null && pAvatar.isNotEmpty) fetchedAvatar = pAvatar;
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            if (fetchedPhone != null && fetchedPhone.isNotEmpty) _phoneNumber = fetchedPhone;
+            if (fetchedName != null && fetchedName.isNotEmpty) _passengerName = fetchedName;
+            if (fetchedAvatar != null && fetchedAvatar.isNotEmpty) _passengerAvatarUrl = fetchedAvatar;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching passenger contact from profiles: $e');
+    }
+  }
+
+  String get _cleanPhoneNumber => _phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
 
   void _copyToClipboard(BuildContext context) {
-    Clipboard.setData(ClipboardData(text: phoneNumber));
+    Clipboard.setData(ClipboardData(text: _phoneNumber));
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Phone number $phoneNumber copied to clipboard!',
+          'Phone number $_phoneNumber copied to clipboard!',
           style: GoogleFonts.poppins(fontSize: 12.5),
         ),
         backgroundColor: AppColors.textDark,
@@ -66,8 +142,8 @@ class RiderContactModal extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
               ),
               child: SvgPicture.asset(
@@ -90,34 +166,31 @@ class RiderContactModal extends StatelessWidget {
           ],
         ),
         content: Text(
-          '$appName app is not installed on your phone. Would you like to copy $passengerName\'s phone number ($phoneNumber) to your clipboard?',
+          '$appName app is not installed on your phone. Would you like to copy $_passengerName\'s phone number ($_phoneNumber) to your clipboard?',
           style: GoogleFonts.poppins(
             fontSize: 13,
             color: const Color(0xFF64748B),
-            height: 1.4,
           ),
         ),
-        actionsPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16, top: 0),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
               'Cancel',
-              style: GoogleFonts.poppins(color: Colors.grey, fontWeight: FontWeight.w600),
+              style: GoogleFonts.poppins(color: AppColors.textMuted),
             ),
           ),
-          ElevatedButton.icon(
+          ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _copyToClipboard(context);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
-              elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
             ),
-            icon: const Icon(Icons.copy_rounded, color: AppColors.textDark, size: 16),
-            label: Text(
+            child: Text(
               'Copy Number',
               style: GoogleFonts.poppins(
                 color: AppColors.textDark,
@@ -132,7 +205,7 @@ class RiderContactModal extends StatelessWidget {
   }
 
   Future<void> _launchCellularCall(BuildContext context) async {
-    final Uri url = Uri.parse('tel:$phoneNumber');
+    final Uri url = Uri.parse('tel:$_phoneNumber');
     try {
       final launched = await launchUrl(url);
       if (!launched && context.mounted) {
@@ -251,12 +324,24 @@ class RiderContactModal extends StatelessWidget {
                   color: AppColors.primarySubtle,
                   border: Border.all(color: AppColors.primary, width: 1.5),
                 ),
-                child: const ClipOval(
-                  child: Icon(
-                    Icons.person_rounded,
-                    size: 34,
-                    color: AppColors.textDark,
-                  ),
+                child: ClipOval(
+                  child: (_passengerAvatarUrl != null && _passengerAvatarUrl!.isNotEmpty)
+                      ? Image.network(
+                          _passengerAvatarUrl!,
+                          width: 52,
+                          height: 52,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => const Icon(
+                            Icons.person_rounded,
+                            size: 34,
+                            color: AppColors.textDark,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.person_rounded,
+                          size: 34,
+                          color: AppColors.textDark,
+                        ),
                 ),
               ),
               const SizedBox(width: 14),
@@ -265,7 +350,7 @@ class RiderContactModal extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      passengerName,
+                      _passengerName,
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -281,7 +366,7 @@ class RiderContactModal extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '$passengerRating • Active Passenger',
+                          '$_passengerRating • Active Passenger',
                           style: GoogleFonts.poppins(
                             fontSize: 12,
                             color: AppColors.textMuted,

@@ -117,6 +117,8 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
             rideId: widget.offer.rideId,
             initialStatus: 'accepted',
             passengerName: widget.offer.passengerName,
+            passengerPhone: widget.offer.passengerPhone,
+            passengerAvatarUrl: widget.offer.passengerAvatarUrl,
             pickupAddress: widget.offer.pickupAddress,
             dropoffAddress: widget.offer.destinationAddress,
             paymentMethod: widget.offer.paymentMethod,
@@ -284,7 +286,22 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.person_rounded, size: 16, color: AppColors.textDark),
+                        if (widget.offer.passengerAvatarUrl != null && widget.offer.passengerAvatarUrl!.isNotEmpty)
+                          ClipOval(
+                            child: Image.network(
+                              widget.offer.passengerAvatarUrl!,
+                              width: 18,
+                              height: 18,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => const Icon(
+                                Icons.person_rounded,
+                                size: 16,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                          )
+                        else
+                          const Icon(Icons.person_rounded, size: 16, color: AppColors.textDark),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(

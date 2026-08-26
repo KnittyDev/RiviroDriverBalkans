@@ -10,11 +10,16 @@ import '../../theme/app_theme.dart';
 import '../../services/directions_service.dart';
 import '../../services/location_service.dart';
 import '../../widgets/rider_contact_modal.dart';
+import '../../widgets/rider_chat_modal.dart';
+import '../../widgets/trip_review_modal.dart';
+import '../../services/driver_stats_service.dart';
 
 class RideNavigationScreen extends StatefulWidget {
   final String? rideId;
   final String? initialStatus;
   final String passengerName;
+  final String? passengerPhone;
+  final String? passengerAvatarUrl;
   final String pickupAddress;
   final String dropoffAddress;
   final String paymentMethod;
@@ -24,6 +29,8 @@ class RideNavigationScreen extends StatefulWidget {
     this.rideId,
     this.initialStatus = 'accepted',
     this.passengerName = 'Marcus Vance',
+    this.passengerPhone,
+    this.passengerAvatarUrl,
     this.pickupAddress = 'Center Siedlce, Poland',
     this.dropoffAddress = 'Galeria Siedlce, Poland',
     this.paymentMethod = 'Online',
@@ -493,75 +500,149 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.passengerName,
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textDark,
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppColors.primarySubtle,
+                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.5), width: 1.5),
+                              ),
+                              child: ClipOval(
+                                child: (widget.passengerAvatarUrl != null && widget.passengerAvatarUrl!.isNotEmpty)
+                                    ? Image.network(
+                                        widget.passengerAvatarUrl!,
+                                        width: 44,
+                                        height: 44,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => const Icon(
+                                          Icons.person_rounded,
+                                          size: 24,
+                                          color: AppColors.textDark,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.person_rounded,
+                                        size: 24,
+                                        color: AppColors.textDark,
+                                      ),
+                              ),
                             ),
-                          ),
-                          Text(
-                            'Destination: ${widget.dropoffAddress}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11.5,
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryActiveBg,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppColors.primary.withOpacity(0.4)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  widget.paymentMethod.toLowerCase() == 'cash'
-                                      ? Icons.payments_rounded
-                                      : Icons.credit_card_rounded,
-                                  size: 11,
-                                  color: AppColors.textDark,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  widget.paymentMethod.toLowerCase() == 'cash'
-                                      ? 'Cash Ride (Collect Cash)'
-                                      : 'Online Payment (In-App)',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textDark,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.passengerName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textDark,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  Text(
+                                    'Destination: ${widget.dropoffAddress}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11.5,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryActiveBg,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          widget.paymentMethod.toLowerCase() == 'cash'
+                                              ? Icons.payments_rounded
+                                              : Icons.credit_card_rounded,
+                                          size: 11,
+                                          color: AppColors.textDark,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          widget.paymentMethod.toLowerCase() == 'cash'
+                                              ? 'Cash Ride (Collect Cash)'
+                                              : 'Online Payment (In-App)',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.textDark,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              if (widget.rideId != null) {
+                                RiderChatModal.show(
+                                  context,
+                                  rideId: widget.rideId!,
+                                  passengerName: widget.passengerName,
+                                  passengerPhone: widget.passengerPhone,
+                                  passengerAvatarUrl: widget.passengerAvatarUrl,
+                                );
+                              }
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryActiveBg,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+                              ),
+                              child: const Icon(Icons.chat_bubble_rounded, color: AppColors.textDark, size: 18),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              RiderContactModal.show(
+                                context,
+                                rideId: widget.rideId,
+                                passengerName: widget.passengerName,
+                                phoneNumber: widget.passengerPhone ?? '',
+                                passengerAvatarUrl: widget.passengerAvatarUrl,
+                              );
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryActiveBg,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+                              ),
+                              child: const Icon(Icons.phone_rounded, color: AppColors.textDark, size: 18),
                             ),
                           ),
                         ],
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          RiderContactModal.show(
-                            context,
-                            passengerName: widget.passengerName,
-                          );
-                        },
-                        child: Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryActiveBg,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AppColors.primary.withOpacity(0.4)),
-                          ),
-                          child: const Icon(Icons.phone_rounded, color: AppColors.textDark, size: 20),
-                        ),
                       ),
                     ],
                   ),
@@ -666,23 +747,30 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
                           // in_progress -> Complete Trip
                           return ElevatedButton.icon(
                             onPressed: () async {
-                              if (widget.rideId != null) {
+                              final currentRideId = widget.rideId;
+                              final passengerName = widget.passengerName;
+                              final passengerAvatar = widget.passengerAvatarUrl;
+
+                              if (currentRideId != null) {
                                 await Supabase.instance.client
                                     .from('rides')
                                     .update({'status': 'completed', 'updated_at': DateTime.now().toUtc().toIso8601String()})
-                                    .eq('id', widget.rideId!);
+                                    .eq('id', currentRideId);
+                                DriverStatsService.fetchDriverLiveStats();
                               }
-                              Navigator.pop(context);
+
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Trip Completed successfully!',
-                                      style: GoogleFonts.poppins(fontSize: 12.5),
-                                    ),
-                                    backgroundColor: AppColors.textDark,
-                                  ),
-                                );
+                                Navigator.pop(context);
+                                if (currentRideId != null) {
+                                  TripReviewModal.show(
+                                    context,
+                                    rideId: currentRideId,
+                                    passengerName: passengerName,
+                                    passengerAvatarUrl: passengerAvatar,
+                                    fare: '24.50€',
+                                    tripId: '#TR-${currentRideId.substring(0, 4).toUpperCase()}',
+                                  );
+                                }
                               }
                             },
                             style: ElevatedButton.styleFrom(

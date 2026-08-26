@@ -4,8 +4,10 @@ import '../../../theme/app_theme.dart';
 import '../../../widgets/trip_review_modal.dart';
 
 class OrderItemCard extends StatelessWidget {
+  final String? rideId;
   final String date;
   final String passengerName;
+  final String? passengerAvatarUrl;
   final String passengerRating;
   final String pickup;
   final String dropoff;
@@ -17,8 +19,10 @@ class OrderItemCard extends StatelessWidget {
 
   const OrderItemCard({
     super.key,
+    this.rideId,
     required this.date,
     required this.passengerName,
+    this.passengerAvatarUrl,
     this.passengerRating = '5.0',
     required this.pickup,
     required this.dropoff,
@@ -34,7 +38,9 @@ class OrderItemCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => TripReviewModal.show(
         context,
+        rideId: rideId ?? tripId,
         passengerName: passengerName,
+        passengerAvatarUrl: passengerAvatarUrl,
         fare: fare,
         tripId: tripId,
       ),
@@ -334,7 +340,9 @@ class OrderItemCard extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: () => TripReviewModal.show(
                   context,
+                  rideId: rideId ?? tripId,
                   passengerName: passengerName,
+                  passengerAvatarUrl: passengerAvatarUrl,
                   fare: fare,
                   tripId: tripId,
                 ),
