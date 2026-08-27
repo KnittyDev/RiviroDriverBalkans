@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
-class WithdrawHistoryModal extends StatelessWidget {
+class WithdrawHistoryModal extends StatefulWidget {
   const WithdrawHistoryModal({super.key});
 
   static void show(BuildContext context) {
@@ -14,42 +17,66 @@ class WithdrawHistoryModal extends StatelessWidget {
     );
   }
 
-  static const List<Map<String, String>> historyData = [
-    {
-      'amount': '€1,245.00',
-      'date': 'Today, 02:20 PM',
-      'method': 'SEPA Express Instant',
-      'status': 'Completed',
-      'ref': '#TRX-9821-SEPA',
-    },
-    {
-      'amount': '€450.00',
-      'date': 'Yesterday, 09:15 AM',
-      'method': 'SEPA Express Instant',
-      'status': 'Completed',
-      'ref': '#TRX-8910-SEPA',
-    },
-    {
-      'amount': '€820.00',
-      'date': '28 Jul 2026, 11:30 AM',
-      'method': 'Standard Bank Transfer',
-      'status': 'Completed',
-      'ref': '#TRX-7812-STD',
-    },
-    {
-      'amount': '€630.00',
-      'date': '21 Jul 2026, 04:45 PM',
-      'method': 'Standard Bank Transfer',
-      'status': 'Completed',
-      'ref': '#TRX-6901-STD',
-    },
-  ];
+  @override
+  State<WithdrawHistoryModal> createState() => _WithdrawHistoryModalState();
+}
+
+class _WithdrawHistoryModalState extends State<WithdrawHistoryModal> {
+  List<Map<String, dynamic>> _transactions = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchWithdrawalHistory();
+  }
+
+  Future<void> _fetchWithdrawalHistory() async {
+    final driverId = AuthService.currentDriverNotifier.value?.id ??
+        Supabase.instance.client.auth.currentUser?.id;
+
+    if (driverId == null || driverId.isEmpty) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final rows = await Supabase.instance.client
+          .from('wallet_transactions')
+          .select()
+          .eq('user_id', driverId)
+          .eq('type', 'withdraw')
+          .order('created_at', ascending: false)
+          .limit(20);
+
+      setState(() {
+        _transactions = List<Map<String, dynamic>>.from(rows);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('⚠️ [WithdrawHistory] Error fetching history: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _formatDate(dynamic dateVal) {
+    if (dateVal == null) return 'Recent';
+    try {
+      final dt = DateTime.parse(dateVal.toString()).toLocal();
+      return DateFormat('dd MMM yyyy, hh:mm a').format(dt);
+    } catch (_) {
+      return dateVal.toString();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final safeBottomInset = MediaQuery.of(context).padding.bottom + 20;
 
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -110,28 +137,76 @@ class WithdrawHistoryModal extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // History Items List
-          Flexible(
-            child: SingleChildScrollView(
-              child: Column(
-                children: historyData.map((item) {
+          // History List
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: AppColors.primary,
+                ),
+              ),
+            )
+          else if (_transactions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.receipt_long_outlined, size: 48, color: Colors.grey.shade400),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No withdrawal history yet',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Your completed payout requests will appear here.',
+                      style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _transactions.length,
+                itemBuilder: (context, index) {
+                  final item = _transactions[index];
+                  final rawAmount = (item['amount'] as num?)?.toDouble() ?? 0.0;
+                  final amountStr = '€${rawAmount.abs().toStringAsFixed(2)}';
+                  final title = item['title']?.toString() ?? 'Payout Withdrawal';
+                  final subtitle = item['subtitle']?.toString() ?? 'SEPA Bank Transfer';
+                  final date = _formatDate(item['created_at']);
+
                   return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
+                    margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: AppColors.border),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF22C55E),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF22C55E).withOpacity(0.12),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
+                          child: const Icon(
+                            Icons.arrow_upward_rounded,
+                            color: Color(0xFF15803D),
+                            size: 20,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -139,20 +214,24 @@ class WithdrawHistoryModal extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item['amount']!,
+                                title,
                                 style: GoogleFonts.poppins(
-                                  fontSize: 15,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.textDark,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${item['method']} • ${item['date']}',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: AppColors.textMuted,
-                                ),
+                                subtitle,
+                                style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textMuted),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                date,
+                                style: GoogleFonts.poppins(fontSize: 10, color: AppColors.textInactive),
                               ),
                             ],
                           ),
@@ -160,27 +239,28 @@ class WithdrawHistoryModal extends StatelessWidget {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF22C55E).withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${item['status']} ✓',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF15803D),
-                                ),
+                            Text(
+                              amountStr,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textDark,
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              item['ref']!,
-                              style: GoogleFonts.poppins(
-                                fontSize: 9.5,
-                                color: AppColors.textMuted,
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Completed',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF16A34A),
+                                ),
                               ),
                             ),
                           ],
@@ -188,10 +268,9 @@ class WithdrawHistoryModal extends StatelessWidget {
                       ],
                     ),
                   );
-                }).toList(),
+                },
               ),
             ),
-          ),
         ],
       ),
     );

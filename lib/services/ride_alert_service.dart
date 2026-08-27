@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
 /// Debug information emitted during ride alert playback
@@ -37,6 +38,9 @@ class RideAlertService {
   int _currentRepetition = 0;
   bool _isAlertActive = false;
 
+  static bool audioAlertsEnabled = true;
+  static bool hapticFeedbackEnabled = true;
+
   static const int maxRepetitions = 5; // 5 repetitions
   static const Duration intervalDuration = Duration(milliseconds: 2400); // 2.4s interval
   static const int timeoutSeconds = 12; // 12s total timeout
@@ -46,6 +50,33 @@ class RideAlertService {
 
   Stream<RideAlertDebugInfo> get debugStream => _debugStreamController.stream;
   bool get isAlertActive => _isAlertActive;
+
+  /// Loads saved alert settings from SharedPreferences
+  static Future<void> initPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      audioAlertsEnabled = prefs.getBool('setting_audio_alerts') ?? true;
+      hapticFeedbackEnabled = prefs.getBool('setting_haptic_feedback') ?? true;
+    } catch (_) {}
+  }
+
+  /// Sets and persists audio alerts enabled state
+  static Future<void> setAudioAlerts(bool enabled) async {
+    audioAlertsEnabled = enabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('setting_audio_alerts', enabled);
+    } catch (_) {}
+  }
+
+  /// Sets and persists haptic vibration enabled state
+  static Future<void> setHapticFeedback(bool enabled) async {
+    hapticFeedbackEnabled = enabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('setting_haptic_feedback', enabled);
+    } catch (_) {}
+  }
 
   /// Starts incoming ride alert with live debug tracking (12s timeout, 5 repetitions, 2.4s interval)
   Future<void> startRideAlert({
@@ -89,7 +120,7 @@ class RideAlertService {
     final elapsedSec = (elapsedMs / 1000).toStringAsFixed(2);
 
     final debugMsg =
-        '🔊 Pulse #$repNumber/$maxRepetitions | Elapsed: ${elapsedMs}ms (${elapsedSec}s) | Audio: ride.mp3 (1.1s) | Haptics: Light pulse emitted';
+        '🔊 Pulse #$repNumber/$maxRepetitions | Elapsed: ${elapsedMs}ms (${elapsedSec}s) | Audio: ${audioAlertsEnabled ? "ride.mp3 (1.1s)" : "Muted"} | Haptics: ${hapticFeedbackEnabled ? "Active" : "Disabled"}';
 
     if (kDebugMode) {
       print('[RIDE_ALERT_DEBUG] $debugMsg');
@@ -102,17 +133,23 @@ class RideAlertService {
     );
 
     try {
-      await _audioPlayer.stop();
-      await _audioPlayer.play(AssetSource('sfx/ride.mp3'));
+      if (audioAlertsEnabled) {
+        await _audioPlayer.stop();
+        await _audioPlayer.play(AssetSource('sfx/ride.mp3'));
+      }
 
-      final hasVibrator = await Vibration.hasVibrator();
-      if (hasVibrator) {
-        Vibration.vibrate(duration: 200); // Light vibration pulse on each repeat
-      } else {
-        HapticFeedback.lightImpact();
+      if (hapticFeedbackEnabled) {
+        final hasVibrator = await Vibration.hasVibrator();
+        if (hasVibrator) {
+          Vibration.vibrate(duration: 200); // Light vibration pulse on each repeat
+        } else {
+          HapticFeedback.lightImpact();
+        }
       }
     } catch (e) {
-      HapticFeedback.lightImpact();
+      if (hapticFeedbackEnabled) {
+        HapticFeedback.lightImpact();
+      }
     }
   }
 

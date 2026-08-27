@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/auth_service.dart';
+import '../services/driver_stats_service.dart';
 import '../theme/app_theme.dart';
+import 'edit_bank_details_modal.dart';
 import 'withdraw_history_modal.dart';
 
 class WithdrawModal extends StatefulWidget {
@@ -8,10 +13,10 @@ class WithdrawModal extends StatefulWidget {
 
   const WithdrawModal({
     super.key,
-    this.availableBalance = '1.245€',
+    this.availableBalance = '0.00€',
   });
 
-  static void show(BuildContext context, {String availableBalance = '1.245€'}) {
+  static void show(BuildContext context, {String availableBalance = '0.00€'}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -29,11 +34,21 @@ class _WithdrawModalState extends State<WithdrawModal> {
   bool _isExpressPayout = true;
   bool _isProcessing = false;
   bool _isSuccess = false;
+  bool _isLoadingProfile = true;
+  String? _errorMessage;
+
+  String _bankName = 'NLB Banka AD Podgorica';
+  String _iban = 'ME255300000012345678';
+  String _swiftBic = 'NLBMMEPG';
+  String _holderName = 'Driver';
+  double _currentWallet = 0.0;
+  String? _lastPayoutRef;
 
   @override
   void initState() {
     super.initState();
-    _amountController = TextEditingController(text: '1245.00');
+    _amountController = TextEditingController(text: '0.00');
+    _fetchLiveDriverBankData();
   }
 
   @override
@@ -42,17 +57,119 @@ class _WithdrawModalState extends State<WithdrawModal> {
     super.dispose();
   }
 
+  Future<void> _fetchLiveDriverBankData() async {
+    final driverId = AuthService.currentDriverNotifier.value?.id ??
+        Supabase.instance.client.auth.currentUser?.id;
+
+    if (driverId == null || driverId.isEmpty) {
+      setState(() => _isLoadingProfile = false);
+      return;
+    }
+
+    try {
+      final profileRow = await Supabase.instance.client
+          .from('profiles')
+          .select('bank_name, iban, swift_bic, account_holder_name, full_name, driver_wallet')
+          .eq('id', driverId)
+          .maybeSingle();
+
+      if (profileRow != null) {
+        final walletVal = (profileRow['driver_wallet'] as num?)?.toDouble() ?? 0.0;
+        setState(() {
+          _bankName = profileRow['bank_name']?.toString() ?? 'NLB Banka AD Podgorica';
+          _iban = profileRow['iban']?.toString() ?? 'ME255300000012345678';
+          _swiftBic = profileRow['swift_bic']?.toString() ?? 'NLBMMEPG';
+          _holderName = profileRow['account_holder_name']?.toString() ??
+              profileRow['full_name']?.toString() ??
+              'Driver';
+          _currentWallet = walletVal > 0 ? walletVal : 0.0;
+          _amountController.text = _currentWallet > 0 ? _currentWallet.toStringAsFixed(2) : '0.00';
+          _isLoadingProfile = false;
+        });
+      } else {
+        setState(() => _isLoadingProfile = false);
+      }
+    } catch (e) {
+      debugPrint('⚠️ [WithdrawModal] Error fetching bank data: $e');
+      setState(() => _isLoadingProfile = false);
+    }
+  }
+
+  String _formatMaskedIban(String iban) {
+    final clean = iban.replaceAll(' ', '');
+    if (clean.length < 8) return iban;
+    final prefix = clean.substring(0, 4);
+    final suffix = clean.substring(clean.length - 4);
+    return '$prefix •••• •••• $suffix';
+  }
+
   void _handleConfirmPayout() async {
+    final enteredAmount = double.tryParse(_amountController.text.trim());
+    if (enteredAmount == null || enteredAmount <= 0) {
+      setState(() => _errorMessage = 'Please enter a valid withdrawal amount.');
+      return;
+    }
+
+    if (enteredAmount > _currentWallet) {
+      setState(() => _errorMessage =
+          'Withdrawal amount exceeds available balance (€${_currentWallet.toStringAsFixed(2)}).');
+      return;
+    }
+
+    final driverId = AuthService.currentDriverNotifier.value?.id ??
+        Supabase.instance.client.auth.currentUser?.id;
+
+    if (driverId == null || driverId.isEmpty) {
+      setState(() => _errorMessage = 'Driver session not found.');
+      return;
+    }
+
     setState(() {
       _isProcessing = true;
+      _errorMessage = null;
     });
 
-    await Future.delayed(const Duration(milliseconds: 1400));
+    HapticFeedback.lightImpact();
 
-    if (mounted) {
+    try {
+      final updatedWallet = _currentWallet - enteredAmount;
+      final payoutRef = '#TRX-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}-${_isExpressPayout ? 'SEPA' : 'STD'}';
+
+      // 1. Deduct wallet in profiles
+      await Supabase.instance.client.from('profiles').update({
+        'driver_wallet': updatedWallet,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', driverId);
+
+      // 2. Insert into wallet_transactions
+      await Supabase.instance.client.from('wallet_transactions').insert({
+        'user_id': driverId,
+        'type': 'withdraw',
+        'amount': -enteredAmount,
+        'currency': '€',
+        'title': 'Payout Withdrawal',
+        'subtitle': 'To $_bankName (${_formatMaskedIban(_iban)}) • $payoutRef',
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+
+      // 3. Refresh live driver stats
+      await DriverStatsService.fetchDriverLiveStats(driverId);
+
+      HapticFeedback.heavyImpact();
+
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _isSuccess = true;
+          _currentWallet = updatedWallet;
+          _lastPayoutRef = payoutRef;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ [WithdrawModal] Payout error: $e');
       setState(() {
         _isProcessing = false;
-        _isSuccess = true;
+        _errorMessage = 'Payout request failed: $e';
       });
     }
   }
@@ -99,7 +216,7 @@ class _WithdrawModalState extends State<WithdrawModal> {
         ),
         const SizedBox(height: 16),
 
-        // Header Title
+        // Header Title & History Action
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -124,15 +241,26 @@ class _WithdrawModalState extends State<WithdrawModal> {
                 ),
               ],
             ),
-            IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    WithdrawHistoryModal.show(context);
+                  },
+                  icon: const Icon(Icons.history_rounded, color: AppColors.textDark),
+                  tooltip: 'Withdrawal History',
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 12),
 
-        // Destination Bank Account Card
+        // Destination Bank Account Card (With Change/Edit button)
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -140,62 +268,89 @@ class _WithdrawModalState extends State<WithdrawModal> {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: AppColors.border),
           ),
-          child: Row(
+          child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.account_balance_rounded, color: AppColors.primary, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'PKO Bank Polski',
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.account_balance_rounded, color: AppColors.primary, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _bankName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          'IBAN: ${_formatMaskedIban(_iban)}',
+                          style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textMuted),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (_swiftBic.isNotEmpty)
+                          Text(
+                            'SWIFT: $_swiftBic • Holder: $_holderName',
+                            style: GoogleFonts.poppins(fontSize: 10, color: AppColors.textInactive),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Verified',
                       style: GoogleFonts.poppins(
-                        fontSize: 13,
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
+                        color: const Color(0xFF15803D),
                       ),
                     ),
-                    Text(
-                      'IBAN: PL89 1020 **** **** 4821',
-                      style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF22C55E).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'Verified',
-                  style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF15803D),
                   ),
-                ),
+                ],
               ),
             ],
           ),
         ),
         const SizedBox(height: 16),
 
-        // Amount Input Field
-        Text(
-          'Withdrawal Amount (€)',
-          style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textDark),
+        // Available Balance Notice
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Withdrawal Amount (€)',
+              style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textDark),
+            ),
+            Text(
+              'Available: €${_currentWallet.toStringAsFixed(2)}',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: _currentWallet > 0 ? const Color(0xFF16A34A) : AppColors.textMuted,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 6),
+
+        // Amount Input Field
         TextField(
           controller: _amountController,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -231,24 +386,94 @@ class _WithdrawModalState extends State<WithdrawModal> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            _buildPresetChip('25€', '25.00'),
+            _buildPresetChip('50€', '50.00'),
             _buildPresetChip('100€', '100.00'),
-            _buildPresetChip('250€', '250.00'),
-            _buildPresetChip('500€', '500.00'),
-            _buildPresetChip('Max (${widget.availableBalance})', '1245.00'),
+            _buildPresetChip('Max (€${_currentWallet.toStringAsFixed(0)})', _currentWallet.toStringAsFixed(2)),
           ],
         ),
         const SizedBox(height: 16),
 
-        const SizedBox(height: 22),
+        // Payout Method Speed Selection
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    _isExpressPayout ? Icons.bolt_rounded : Icons.account_balance_rounded,
+                    color: _isExpressPayout ? const Color(0xFFEAB308) : AppColors.textDark,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isExpressPayout ? 'SEPA Instant Transfer' : 'Standard Bank Transfer',
+                        style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textDark),
+                      ),
+                      Text(
+                        _isExpressPayout ? 'Estimated arrival: 5-15 minutes' : 'Estimated arrival: 1-2 business days',
+                        style: GoogleFonts.poppins(fontSize: 10.5, color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Switch.adaptive(
+                value: _isExpressPayout,
+                activeColor: AppColors.primary,
+                onChanged: (val) => setState(() => _isExpressPayout = val),
+              ),
+            ],
+          ),
+        ),
+
+        // Error message
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.red.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline_rounded, size: 16, color: Colors.red.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _errorMessage!,
+                    style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.red.shade700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 18),
 
         // Confirm Button
         SizedBox(
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: _isProcessing ? null : _handleConfirmPayout,
+            onPressed: _isProcessing || _currentWallet <= 0 ? null : _handleConfirmPayout,
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.textDark,
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.textDark,
+              disabledBackgroundColor: Colors.grey.shade200,
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
@@ -256,45 +481,12 @@ class _WithdrawModalState extends State<WithdrawModal> {
                 ? const SizedBox(
                     width: 22,
                     height: 22,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                    child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.textDark),
                   )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Confirm Withdrawal',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
-                    ],
+                : Text(
+                    'Confirm Payout (€${_amountController.text})',
+                    style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.bold),
                   ),
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        // Withdrawal History Button
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: TextButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-              WithdrawHistoryModal.show(context);
-            },
-            icon: const Icon(Icons.history_rounded, color: AppColors.textDark, size: 20),
-            label: Text(
-              'Withdrawal History',
-              style: GoogleFonts.poppins(
-                fontSize: 13.5,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textDark,
-              ),
-            ),
           ),
         ),
       ],
@@ -304,24 +496,22 @@ class _WithdrawModalState extends State<WithdrawModal> {
   Widget _buildPresetChip(String label, String value) {
     return GestureDetector(
       onTap: () {
+        HapticFeedback.selectionClick();
         setState(() {
           _amountController.text = value;
+          _errorMessage = null;
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppColors.border),
         ),
         child: Text(
           label,
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textDark,
-          ),
+          style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textDark),
         ),
       ),
     );
@@ -332,68 +522,77 @@ class _WithdrawModalState extends State<WithdrawModal> {
       key: const ValueKey('success_view'),
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.all(16),
-          decoration: const BoxDecoration(
-            color: Color(0xFF22C55E),
+          width: 70,
+          height: 70,
+          decoration: BoxDecoration(
+            color: const Color(0xFF22C55E).withOpacity(0.15),
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.check_rounded, color: Colors.white, size: 40),
+          child: const Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 44),
         ),
         const SizedBox(height: 16),
         Text(
-          'Withdrawal Initiated!',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textDark,
-          ),
+          'Payout Initiated!',
+          style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.bold, color: AppColors.textDark),
         ),
         const SizedBox(height: 6),
         Text(
-          '€${_amountController.text} is on its way to your PKO Bank Polski IBAN.',
+          'Your payout of €${_amountController.text} has been successfully sent to your bank account.',
+          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textMuted),
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textMuted),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
+
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: AppColors.border),
           ),
-          child: Text(
-            'Ref ID: #TRX-9821-SEPA',
-            style: GoogleFonts.poppins(
-              fontSize: 11.5,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textDark,
-            ),
+          child: Column(
+            children: [
+              _buildSuccessRow('Destination Bank', _bankName),
+              const Divider(color: AppColors.border, height: 16),
+              _buildSuccessRow('IBAN', _formatMaskedIban(_iban)),
+              const Divider(color: AppColors.border, height: 16),
+              _buildSuccessRow('Estimated Arrival', _isExpressPayout ? '5-15 min (SEPA Instant)' : '1-2 business days'),
+              const Divider(color: AppColors.border, height: 16),
+              _buildSuccessRow('Transaction Ref', _lastPayoutRef ?? '#TRX-SEPA-9821'),
+            ],
           ),
         ),
         const SizedBox(height: 24),
+
         SizedBox(
           width: double.infinity,
-          height: 48,
+          height: 50,
           child: ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.textDark,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
             child: Text(
               'Done',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textDark,
-              ),
+              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold),
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildSuccessRow(String title, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textMuted)),
+        Text(value, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textDark)),
       ],
     );
   }

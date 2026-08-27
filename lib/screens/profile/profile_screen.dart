@@ -30,10 +30,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadAllDriverData() async {
     final driverId = AuthService.currentDriverNotifier.value?.id;
+    await DriverStatsService.fetchDriverLiveStats(driverId);
+    
     if (driverId != null && driverId.isNotEmpty) {
-      await DriverStatsService.fetchDriverLiveStats(driverId);
       final list = await ReviewService.fetchDriverReviewsList(driverId);
-
       if (mounted) {
         setState(() {
           _recentReviews = list;

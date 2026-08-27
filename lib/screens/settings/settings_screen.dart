@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/review_service.dart';
+import '../../services/ride_alert_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/driver_reviews_modal.dart';
 import 'pages/vehicle_settings_screen.dart';
@@ -36,6 +39,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadPackageInfo();
     _loadDriverRating();
+    _loadAlertPreferences();
+  }
+
+  Future<void> _loadAlertPreferences() async {
+    await RideAlertService.initPreferences();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _audioAlertsEnabled = RideAlertService.audioAlertsEnabled;
+          _hapticFeedbackEnabled = RideAlertService.hapticFeedbackEnabled;
+          _autoNavigationEnabled = prefs.getBool('setting_auto_navigation') ?? true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleAudioAlerts(bool val) async {
+    setState(() => _audioAlertsEnabled = val);
+    await RideAlertService.setAudioAlerts(val);
+  }
+
+  Future<void> _toggleHapticFeedback(bool val) async {
+    setState(() => _hapticFeedbackEnabled = val);
+    await RideAlertService.setHapticFeedback(val);
+  }
+
+  Future<void> _toggleAutoNavigation(bool val) async {
+    setState(() => _autoNavigationEnabled = val);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('setting_auto_navigation', val);
+    } catch (_) {}
   }
 
   Future<void> _loadDriverRating() async {
@@ -361,17 +397,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   );
                 },
               ),
-              const Divider(color: AppColors.border, height: 1),
-              _buildSimpleTile(
-                title: 'Vehicle Insurance & Inspection',
-                icon: Icons.shield_rounded,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const VehicleInsuranceScreen()),
-                  );
-                },
-              ),
             ]),
             const SizedBox(height: 24),
 
@@ -384,7 +409,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: 'Automatically open map on trip accept',
                 icon: Icons.navigation_rounded,
                 value: _autoNavigationEnabled,
-                onChanged: (val) => setState(() => _autoNavigationEnabled = val),
+                onChanged: _toggleAutoNavigation,
               ),
               const Divider(color: AppColors.border, height: 1),
               _buildSimpleTile(
@@ -406,7 +431,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: 'Play 1.1s audio clip on incoming requests',
                 icon: Icons.volume_up_rounded,
                 value: _audioAlertsEnabled,
-                onChanged: (val) => setState(() => _audioAlertsEnabled = val),
+                onChanged: _toggleAudioAlerts,
               ),
               const Divider(color: AppColors.border, height: 1),
               _buildSwitchTile(
@@ -414,28 +439,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: 'Vibrate device on alert pulses',
                 icon: Icons.vibration_rounded,
                 value: _hapticFeedbackEnabled,
-                onChanged: (val) => setState(() => _hapticFeedbackEnabled = val),
+                onChanged: _toggleHapticFeedback,
               ),
             ]),
             const SizedBox(height: 24),
 
-            // 5. Driver Authentication & Account Switch
-            _buildSectionTitle('Driver Account'),
-            const SizedBox(height: 10),
-            _buildSettingsContainer([
-              _buildSimpleTile(
-                title: 'Sign In / Register Driver Account',
-                subtitle: 'Log in or create a new official Driver profile',
-                icon: Icons.account_circle_rounded,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AuthScreen()),
-                  );
-                },
-              ),
-            ]),
-            const SizedBox(height: 24),
+            // 5. Driver Authentication & Account Switch (Hidden if driver is already logged in)
+            if (AuthService.currentDriverNotifier.value == null &&
+                Supabase.instance.client.auth.currentUser == null) ...[
+              _buildSectionTitle('Driver Account'),
+              const SizedBox(height: 10),
+              _buildSettingsContainer([
+                _buildSimpleTile(
+                  title: 'Sign In / Register Driver Account',
+                  subtitle: 'Log in or create a new official Driver profile',
+                  icon: Icons.account_circle_rounded,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AuthScreen()),
+                    );
+                  },
+                ),
+              ]),
+              const SizedBox(height: 24),
+            ],
 
             // 6. System & Legal Policies
             _buildSectionTitle('Legal & System'),

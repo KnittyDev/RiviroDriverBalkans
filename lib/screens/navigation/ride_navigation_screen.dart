@@ -12,6 +12,7 @@ import '../../services/location_service.dart';
 import '../../widgets/rider_contact_modal.dart';
 import '../../widgets/rider_chat_modal.dart';
 import '../../widgets/trip_review_modal.dart';
+import '../../widgets/verify_ride_pin_modal.dart';
 import '../../services/driver_stats_service.dart';
 
 class RideNavigationScreen extends StatefulWidget {
@@ -701,25 +702,33 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
                         } else if (_currentStatus == 'arrived') {
                           return ElevatedButton.icon(
                             onPressed: () async {
-                              if (widget.rideId != null) {
-                                await Supabase.instance.client
-                                    .from('rides')
-                                    .update({'status': 'in_progress', 'updated_at': DateTime.now().toUtc().toIso8601String()})
-                                    .eq('id', widget.rideId!);
-                              }
-                              setState(() {
-                                _currentStatus = 'in_progress';
-                              });
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Ride Started! Navigating to destination.',
-                                      style: GoogleFonts.poppins(fontSize: 12.5),
-                                    ),
-                                    backgroundColor: const Color(0xFF22C55E),
-                                  ),
+                              final rideId = widget.rideId;
+                              if (rideId != null) {
+                                final bool isVerified = await VerifyRidePinModal.show(
+                                  context,
+                                  rideId: rideId,
+                                  passengerName: widget.passengerName,
+                                  passengerAvatarUrl: widget.passengerAvatarUrl,
                                 );
+
+                                if (isVerified && mounted) {
+                                  setState(() {
+                                    _currentStatus = 'in_progress';
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'PIN Verified! Navigating to destination.',
+                                        style: GoogleFonts.poppins(fontSize: 12.5),
+                                      ),
+                                      backgroundColor: const Color(0xFF22C55E),
+                                    ),
+                                  );
+                                }
+                              } else {
+                                setState(() {
+                                  _currentStatus = 'in_progress';
+                                });
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -735,7 +744,7 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
                               size: 24,
                             ),
                             label: Text(
-                              'Start Ride',
+                              'Start Ride (Enter PIN)',
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -756,6 +765,8 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
                                     .from('rides')
                                     .update({'status': 'completed', 'updated_at': DateTime.now().toUtc().toIso8601String()})
                                     .eq('id', currentRideId);
+                                
+                                await DriverStatsService.processRidePayout(currentRideId);
                                 DriverStatsService.fetchDriverLiveStats();
                               }
 

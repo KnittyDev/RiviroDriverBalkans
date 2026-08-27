@@ -12,6 +12,7 @@ import 'widgets/order_item_card.dart';
 import '../../widgets/rider_contact_modal.dart';
 import '../../widgets/rider_chat_modal.dart';
 import '../../widgets/trip_review_modal.dart';
+import '../../widgets/verify_ride_pin_modal.dart';
 import '../../services/driver_stats_service.dart';
 
 class OrdersScreen extends StatefulWidget {
@@ -333,16 +334,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 }
               },
               onStartRide: () async {
-                await Supabase.instance.client
-                    .from('rides')
-                    .update({'status': 'in_progress', 'updated_at': DateTime.now().toUtc().toIso8601String()})
-                    .eq('id', rideId);
-                _fetchRidesFromSupabase();
-                if (mounted) {
+                final bool isVerified = await VerifyRidePinModal.show(
+                  context,
+                  rideId: rideId,
+                  passengerName: passengerName,
+                  passengerAvatarUrl: passengerAvatar,
+                );
+
+                if (isVerified && mounted) {
+                  _fetchRidesFromSupabase();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'Ride Started!',
+                        'PIN Verified! Ride Started.',
                         style: GoogleFonts.poppins(fontSize: 12.5),
                       ),
                       backgroundColor: const Color(0xFF22C55E),
@@ -355,6 +359,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     .from('rides')
                     .update({'status': 'completed', 'updated_at': DateTime.now().toUtc().toIso8601String()})
                     .eq('id', rideId);
+                
+                await DriverStatsService.processRidePayout(rideId);
                 _fetchRidesFromSupabase();
                 DriverStatsService.fetchDriverLiveStats();
                 if (mounted) {

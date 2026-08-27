@@ -98,6 +98,36 @@ class AuthService {
       return false;
     }
 
+    // Check debt threshold if trying to go online
+    if (isOnline) {
+      try {
+        final profileRow = await Supabase.instance.client
+            .from('profiles')
+            .select('driver_wallet')
+            .eq('id', driverId)
+            .maybeSingle();
+
+        final double walletBalance = (profileRow?['driver_wallet'] as num?)?.toDouble() ?? 0.0;
+        if (walletBalance <= -30.0) {
+          debugPrint('🚫 [AuthService] Driver $driverId cannot go online! Debt limit reached: $walletBalance€ <= -30.0€');
+          
+          final blockedProfile = current != null
+              ? current.copyWith(isOnline: false)
+              : DriverProfileModel(
+                  id: driverId,
+                  fullName: 'Driver',
+                  email: '',
+                  phoneNumber: '',
+                  isOnline: false,
+                );
+          await setCurrentDriver(blockedProfile);
+          return false;
+        }
+      } catch (e) {
+        debugPrint('⚠️ [AuthService] Failed checking wallet balance: $e');
+      }
+    }
+
     final updatedProfile = current != null
         ? current.copyWith(isOnline: isOnline)
         : DriverProfileModel(

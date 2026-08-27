@@ -425,7 +425,7 @@ class ActiveRideCard extends StatelessWidget {
                         size: 22,
                       ),
                       label: Text(
-                        'Start Ride',
+                        'Verify PIN & Start',
                         style: GoogleFonts.poppins(
                           fontSize: 13.5,
                           fontWeight: FontWeight.bold,

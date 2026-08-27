@@ -12,6 +12,8 @@ class DriverStatsModel {
   final double totalBalance;
   final String carModel;
   final String carPlate;
+  final String carYear;
+  final String carColor;
   final Map<String, double> hourlyEarningsToday;
   final Map<String, double> weeklyDayEarnings;
   final Map<String, double> monthlyEarnings;
@@ -26,6 +28,8 @@ class DriverStatsModel {
     this.totalBalance = 0.0,
     this.carModel = 'Standard Vehicle',
     this.carPlate = '',
+    this.carYear = '2022',
+    this.carColor = 'Black Metallic',
     this.hourlyEarningsToday = const {},
     this.weeklyDayEarnings = const {},
     this.monthlyEarnings = const {},
@@ -36,20 +40,61 @@ class DriverStatsService {
   static final ValueNotifier<DriverStatsModel> statsNotifier =
       ValueNotifier<DriverStatsModel>(const DriverStatsModel());
 
+  static final ValueNotifier<double> debtLimitNotifier =
+      ValueNotifier<double>(-30.0);
+
+  static RealtimeChannel? _profileChannel;
+  static RealtimeChannel? _adminSettingsChannel;
+
   /// Fetches real live stats from Supabase profiles and completed rides
   static Future<DriverStatsModel> fetchDriverLiveStats([String? driverId]) async {
-    final effectiveDriverId = driverId ??
+    String? effectiveDriverId = driverId ??
         AuthService.currentDriverNotifier.value?.id ??
         Supabase.instance.client.auth.currentUser?.id;
+
+    if (effectiveDriverId == null || effectiveDriverId.isEmpty) {
+      try {
+        final fallbackDriver = await Supabase.instance.client
+            .from('profiles')
+            .select('id')
+            .eq('role', 'driver')
+            .order('updated_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+        effectiveDriverId = fallbackDriver?['id']?.toString();
+      } catch (_) {}
+    }
 
     if (effectiveDriverId == null || effectiveDriverId.isEmpty) {
       return statsNotifier.value;
     }
 
+    _subscribeToDriverWallet(effectiveDriverId);
+    _subscribeToAdminSettings();
+
     try {
       debugPrint('📊 [DriverStatsService] Fetching real live stats for driver $effectiveDriverId...');
 
-      // 1. Fetch Profile info (Car Model, Plate, Wallet Balance)
+      // 0. Fetch Dynamic Debt Limit from admin_settings
+      try {
+        final settingRow = await Supabase.instance.client
+            .from('admin_settings')
+            .select('value')
+            .eq('key', 'driver_debt_limit')
+            .maybeSingle();
+
+        if (settingRow != null && settingRow['value'] != null) {
+          final val = settingRow['value'];
+          final double parsed = val is num ? val.toDouble() : (double.tryParse(val.toString()) ?? -30.0);
+          final double finalLimit = parsed > 0 ? -parsed : parsed;
+          debtLimitNotifier.value = finalLimit;
+          debugPrint('⚙️ [DriverStatsService] Dynamic debt limit loaded: $finalLimit€');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [DriverStatsService] Error loading admin_settings: $e');
+      }
+
+      // 1. Fetch Profile info (Car Model, Plate, Driver Wallet)
       final profileRow = await Supabase.instance.client
           .from('profiles')
           .select()
@@ -58,7 +103,11 @@ class DriverStatsService {
 
       String carModel = profileRow?['vehicle_model']?.toString() ?? 'Mercedes-Benz E-Class';
       String carPlate = profileRow?['vehicle_plate']?.toString() ?? 'PG-TX-789';
-      double walletBalance = (profileRow?['wallet_balance'] as num?)?.toDouble() ?? 0.0;
+      String carYear = profileRow?['car_year']?.toString() ?? '2022';
+      String carColor = profileRow?['vehicle_color']?.toString() ?? 'Black Metallic';
+      double driverWallet = (profileRow?['driver_wallet'] as num?)?.toDouble() ??
+          (profileRow?['wallet_balance'] as num?)?.toDouble() ??
+          0.0;
 
       // 2. Fetch all Completed / Finished rides for this driver
       final rides = await Supabase.instance.client
@@ -121,8 +170,8 @@ class DriverStatsService {
         monthly[monthKey] = (monthly[monthKey] ?? 0.0) + fare;
       }
 
-      // If wallet balance in DB is 0, use real earnings sum
-      final effectiveBalance = walletBalance > 0.0 ? walletBalance : allTimeRidesSum;
+      // Use real driver_wallet balance (can be positive, zero, or negative)
+      final effectiveBalance = driverWallet;
       final tipsToday = (earningsToday * 0.12); // Realistic tip estimation based on rides
 
       // 3. Fetch Real Reviews & Average Rating
@@ -152,18 +201,85 @@ class DriverStatsService {
         totalBalance: effectiveBalance,
         carModel: carModel,
         carPlate: carPlate,
+        carYear: carYear,
+        carColor: carColor,
         hourlyEarningsToday: hourly,
         weeklyDayEarnings: weekly,
         monthlyEarnings: monthly,
       );
 
       statsNotifier.value = updatedStats;
-      debugPrint('✅ [DriverStatsService] Stats loaded: Trips Today=$tripsToday, Earnings Today=${earningsToday.toStringAsFixed(2)}€, Car=$carModel, Plate=$carPlate, Balance=${effectiveBalance.toStringAsFixed(2)}€');
+      debugPrint('✅ [DriverStatsService] Stats loaded: Trips Today=$tripsToday, Earnings Today=${earningsToday.toStringAsFixed(2)}€, Car=$carModel, Plate=$carPlate, Driver Wallet=${effectiveBalance.toStringAsFixed(2)}€');
 
       return updatedStats;
     } catch (e, stack) {
       debugPrint('❌ [DriverStatsService] Error fetching driver stats: $e\n$stack');
       return statsNotifier.value;
+    }
+  }
+
+  /// Calls Supabase RPC to process ride completion payout & commission deduction
+  static Future<Map<String, dynamic>?> processRidePayout(String rideId) async {
+    try {
+      debugPrint('💰 [DriverStatsService] Processing ride payout for ride $rideId...');
+      final response = await Supabase.instance.client
+          .rpc('process_ride_completion_payout', params: {'p_ride_id': rideId});
+      
+      debugPrint('✅ [DriverStatsService] Payout processed successfully: $response');
+      await fetchDriverLiveStats();
+      return response is Map<String, dynamic> ? response : Map<String, dynamic>.from(response as Map);
+    } catch (e, stack) {
+      debugPrint('❌ [DriverStatsService] Error processing payout for $rideId: $e\n$stack');
+      return null;
+    }
+  }
+
+  /// Listens to real-time driver wallet updates on profiles table
+  static void _subscribeToDriverWallet(String driverId) {
+    if (_profileChannel != null) return;
+
+    try {
+      _profileChannel = Supabase.instance.client
+          .channel('driver_wallet_channel_$driverId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'profiles',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'id',
+              value: driverId,
+            ),
+            callback: (payload) {
+              debugPrint('⚡ [DriverStatsService] Realtime profile update received: ${payload.newRecord['driver_wallet']}');
+              fetchDriverLiveStats(driverId);
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('⚠️ [DriverStatsService] Failed to subscribe to profile realtime: $e');
+    }
+  }
+
+  /// Listens to real-time admin settings changes for debt limit
+  static void _subscribeToAdminSettings() {
+    if (_adminSettingsChannel != null) return;
+
+    try {
+      _adminSettingsChannel = Supabase.instance.client
+          .channel('admin_settings_debt_limit_channel')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'admin_settings',
+            callback: (payload) {
+              debugPrint('⚡ [DriverStatsService] Realtime admin_settings update received');
+              fetchDriverLiveStats();
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('⚠️ [DriverStatsService] Failed to subscribe to admin_settings realtime: $e');
     }
   }
 

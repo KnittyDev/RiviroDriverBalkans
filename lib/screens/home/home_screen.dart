@@ -7,6 +7,7 @@ import '../../services/driver_stats_service.dart';
 import '../../services/supabase_location_tracker_service.dart';
 import '../../services/hot_potato_dispatch_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/settle_debt_modal.dart';
 import '../orders/widgets/order_item_card.dart';
 import 'widgets/home_header.dart';
 import 'widgets/status_toggle_card.dart';
@@ -157,11 +158,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     return StatusToggleCard(
                       isOnline: isOnline,
                       onToggle: (value) async {
-                        await AuthService.updateOnlineStatus(value);
+                        final success = await AuthService.updateOnlineStatus(value);
+                        if (!mounted) return;
+
+                        if (value && !success) {
+                          // Debt limit reached!
+                          final currentBalance = DriverStatsService.statsNotifier.value.totalBalance;
+                          _showDebtLimitBlockedDialog(currentBalance);
+                          return;
+                        }
+
                         if (value) {
                           SupabaseLocationTrackerService().startLocationTracking();
                         }
-                        if (!mounted) return;
+                        
                         ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -322,6 +332,129 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showDebtLimitBlockedDialog(double currentBalance) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final safeBottom = MediaQuery.of(context).padding.bottom + 18;
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: EdgeInsets.only(
+            left: 22,
+            right: 22,
+            top: 14,
+            bottom: safeBottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 38,
+                height: 4.5,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Alert Icon
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFEF2F2),
+                  border: Border.all(color: const Color(0xFFFCA5A5), width: 1.5),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.warning_amber_rounded,
+                    size: 38,
+                    color: Color(0xFFDC2626),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Text(
+                'Debt Limit Reached',
+                style: GoogleFonts.poppins(
+                  fontSize: 18.5,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Builder(
+                builder: (context) {
+                  final limitVal = DriverStatsService.debtLimitNotifier.value;
+                  return Text(
+                    'Your outstanding commission debt is ${currentBalance.toStringAsFixed(2)}€ (Limit: -${limitVal.abs().toStringAsFixed(2)}€). You cannot go online until this debt is settled.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      color: AppColors.textMuted,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  );
+                },
+              ),
+              const SizedBox(height: 22),
+
+              // Settle Debt Now Button
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    SettleDebtModal.show(context, currentDebt: currentBalance);
+                  },
+                  icon: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 20),
+                  label: Text(
+                    'Settle Debt via Stripe',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.textDark,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Dismiss',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
