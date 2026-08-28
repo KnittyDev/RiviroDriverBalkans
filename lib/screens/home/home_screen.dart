@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../services/driver_stats_service.dart';
+import '../../services/online_duration_service.dart';
 import '../../services/supabase_location_tracker_service.dart';
 import '../../services/hot_potato_dispatch_service.dart';
 import '../../theme/app_theme.dart';
@@ -21,7 +22,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   double _selectedRadiusKm = 10.0; // Default service radius in km
   List<Map<String, dynamic>> _recentTrips = [];
   bool _isLoadingTrips = true;
@@ -30,16 +31,28 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    OnlineDurationService.init(
+      isCurrentlyOnline: AuthService.currentDriverNotifier.value?.isOnline ?? false,
+    );
     _loadHomeData();
     _subscribeToRidesRealtime();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (_homeRidesChannel != null) {
       Supabase.instance.client.removeChannel(_homeRidesChannel!);
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed || state == AppLifecycleState.paused) {
+      OnlineDurationService.syncSession();
+    }
   }
 
   void _subscribeToRidesRealtime() {
@@ -216,10 +229,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ValueListenableBuilder<DriverStatsModel>(
                   valueListenable: DriverStatsService.statsNotifier,
                   builder: (context, stats, child) {
-                    return QuickStatsStrip(
-                      todayEarnings: '${stats.earningsToday.toStringAsFixed(2)}€',
-                      todayTrips: '${stats.tripsToday} Trips',
-                      onlineTime: '3h 45m',
+                    return ValueListenableBuilder<String>(
+                      valueListenable: OnlineDurationService.onlineTimeStringNotifier,
+                      builder: (context, onlineTimeStr, child) {
+                        return QuickStatsStrip(
+                          todayEarnings: '${stats.earningsToday.toStringAsFixed(2)}€',
+                          todayTrips: '${stats.tripsToday} Trips',
+                          onlineTime: onlineTimeStr,
+                        );
+                      },
                     );
                   },
                 ),

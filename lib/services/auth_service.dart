@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'online_duration_service.dart';
 import 'profile_service.dart';
 
 class DriverProfileModel {
@@ -139,6 +140,7 @@ class AuthService {
           );
 
     await setCurrentDriver(updatedProfile);
+    OnlineDurationService.onOnlineStatusChanged(isOnline);
 
     try {
       final nowUtcIso = DateTime.now().toUtc().toIso8601String();
@@ -214,6 +216,7 @@ class AuthService {
   static Future<void> setCurrentDriver(DriverProfileModel profile) async {
     currentDriverNotifier.value = profile;
     ProfileService.initFromDriver(profile);
+    OnlineDurationService.init(isCurrentlyOnline: profile.isOnline);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefKey, jsonEncode(profile.toJson()));
