@@ -12,14 +12,18 @@ class HotPotatoRideOfferModal extends StatefulWidget {
   final VoidCallback onTimeout;
 
   static BuildContext? _activeModalContext;
+  static bool isModalOpen = false;
+  static String? currentShowingOfferId;
 
   static void dismissCurrentModal() {
-    if (_activeModalContext != null && _activeModalContext!.mounted) {
+    if (_activeModalContext != null) {
       try {
-        Navigator.of(_activeModalContext!).maybePop();
+        Navigator.of(_activeModalContext!, rootNavigator: true).pop();
       } catch (_) {}
-      _activeModalContext = null;
     }
+    _activeModalContext = null;
+    isModalOpen = false;
+    currentShowingOfferId = null;
   }
 
   const HotPotatoRideOfferModal({
@@ -36,27 +40,42 @@ class HotPotatoRideOfferModal extends StatefulWidget {
     required Future<bool> Function() onAccept,
     required VoidCallback onDecline,
     required VoidCallback onTimeout,
-  }) {
+  }) async {
+    // If the exact same offer is already on screen, do NOT open duplicate modal
+    if (isModalOpen && currentShowingOfferId == offer.offerId) {
+      return;
+    }
+
     dismissCurrentModal();
 
-    return showModalBottomSheet(
-      context: context,
-      isDismissible: false,
-      enableDrag: false,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        _activeModalContext = ctx;
-        return HotPotatoRideOfferModal(
-          offer: offer,
-          onAccept: onAccept,
-          onDecline: onDecline,
-          onTimeout: onTimeout,
-        );
-      },
-    ).whenComplete(() {
-      _activeModalContext = null;
-    });
+    isModalOpen = true;
+    currentShowingOfferId = offer.offerId;
+
+    try {
+      await showModalBottomSheet(
+        context: context,
+        useRootNavigator: true,
+        isDismissible: false,
+        enableDrag: false,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) {
+          _activeModalContext = ctx;
+          return HotPotatoRideOfferModal(
+            offer: offer,
+            onAccept: onAccept,
+            onDecline: onDecline,
+            onTimeout: onTimeout,
+          );
+        },
+      );
+    } finally {
+      if (currentShowingOfferId == offer.offerId) {
+        isModalOpen = false;
+        currentShowingOfferId = null;
+        _activeModalContext = null;
+      }
+    }
   }
 
   @override
@@ -64,7 +83,7 @@ class HotPotatoRideOfferModal extends StatefulWidget {
 }
 
 class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _progressController;
   Timer? _countdownTimer;
   late int _remainingSeconds;
@@ -73,9 +92,19 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     final diffSeconds = widget.offer.expiresAt.difference(DateTime.now().toUtc()).inSeconds;
-    _remainingSeconds = diffSeconds > 0 ? diffSeconds : 15;
+    if (diffSeconds <= 1) {
+      _remainingSeconds = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleTimeout();
+      });
+      _progressController = AnimationController(vsync: this, duration: const Duration(seconds: 1));
+      return;
+    }
+
+    _remainingSeconds = diffSeconds;
 
     _progressController = AnimationController(
       vsync: this,
@@ -85,24 +114,39 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
     _progressController.forward();
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() {
-        if (_remainingSeconds > 1) {
-          _remainingSeconds -= 1;
-        } else {
-          _remainingSeconds = 0;
-          timer.cancel();
-          _handleTimeout();
-        }
-      });
+      _syncRemainingTime();
     });
+  }
+
+  void _syncRemainingTime() {
+    if (!mounted || _isProcessingAccept) return;
+
+    final now = DateTime.now().toUtc();
+    final remaining = widget.offer.expiresAt.difference(now).inSeconds;
+
+    if (remaining <= 1) {
+      _remainingSeconds = 0;
+      _countdownTimer?.cancel();
+      _handleTimeout();
+    } else {
+      if (remaining != _remainingSeconds) {
+        setState(() {
+          _remainingSeconds = remaining;
+        });
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncRemainingTime();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     _progressController.dispose();
     super.dispose();
@@ -110,10 +154,10 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
 
   void _handleTimeout() {
     if (_isProcessingAccept) return;
+    _countdownTimer?.cancel();
+    _progressController.stop();
+    HotPotatoRideOfferModal.dismissCurrentModal();
     widget.onTimeout();
-    if (mounted) {
-      Navigator.of(context).maybePop();
-    }
   }
 
   Future<void> _handleAccept() async {
@@ -124,9 +168,7 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
     _progressController.stop();
 
     // 1. Instant close and instant tab switch (0ms delay)
-    if (mounted) {
-      Navigator.of(context).maybePop();
-    }
+    HotPotatoRideOfferModal.dismissCurrentModal();
     MainScreen.switchToTab(1);
 
     // 2. Perform backend acceptance asynchronously in background
@@ -136,9 +178,7 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
   void _handleDecline() {
     _countdownTimer?.cancel();
     _progressController.stop();
-    if (mounted) {
-      Navigator.of(context).maybePop();
-    }
+    HotPotatoRideOfferModal.dismissCurrentModal();
     widget.onDecline();
   }
 

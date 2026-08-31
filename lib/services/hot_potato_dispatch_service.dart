@@ -236,12 +236,13 @@ class HotPotatoDispatchService {
         await Supabase.instance.client.rpc('expire_and_advance_hot_potato_rides');
       } catch (_) {}
 
-      // 2. Check in ride_offers for real active offer
+      // 2. Check in ride_offers for real active offer (only non-expired)
       final response = await Supabase.instance.client
           .from('ride_offers')
           .select()
           .eq('driver_id', driverId)
           .eq('status', 'offered')
+          .gt('expires_at', DateTime.now().toUtc().toIso8601String())
           .order('created_at', ascending: false)
           .limit(1)
           .maybeSingle();
@@ -256,13 +257,22 @@ class HotPotatoDispatchService {
 
   /// Handles and displays the incoming 15-second Hot Potato ride offer
   Future<void> _handleIncomingOffer(BuildContext context, Map<String, dynamic> offerRecord) async {
-    final offerId = offerRecord['id']?.toString() ?? '';
+    final offerId = offerRecord['offer_id']?.toString() ?? offerRecord['id']?.toString() ?? '';
     final rideId = offerRecord['ride_id']?.toString() ?? '';
     final driverId = offerRecord['driver_id']?.toString() ?? '';
     final queueOrder = (offerRecord['queue_order'] as num?)?.toInt() ?? 1;
     final distanceKm = (offerRecord['distance_km'] as num?)?.toDouble() ?? 1.5;
     final expiresAt = DateTime.tryParse(offerRecord['expires_at'] ?? '') ??
-        DateTime.now().add(const Duration(seconds: 15));
+        DateTime.now().toUtc().add(const Duration(seconds: 15));
+
+    // If offer is already expired when opening, ignore it immediately!
+    if (expiresAt.isBefore(DateTime.now().toUtc()) ||
+        expiresAt.difference(DateTime.now().toUtc()).inSeconds <= 1) {
+      debugPrint('ℹ️ [Hot Potato] Offer $offerId already expired ($expiresAt). Skipping modal.');
+      HotPotatoRideOfferModal.dismissCurrentModal();
+      RideAlertService().stopAlert();
+      return;
+    }
 
     // 0. ABSOLUTE CHECK: If driver has ANY active accepted ride, BLOCK modal completely!
     try {
@@ -283,8 +293,13 @@ class HotPotatoDispatchService {
       }
     } catch (_) {}
 
-    // Prevent duplicate modals for same offer
-    if (_currentlyActiveOfferId == offerId) return;
+    // Prevent duplicate modals for same offer or while a modal is already actively showing
+    if ((offerId.isNotEmpty && _currentlyActiveOfferId == offerId) ||
+        (offerId.isNotEmpty && HotPotatoRideOfferModal.isModalOpen && HotPotatoRideOfferModal.currentShowingOfferId == offerId)) {
+      return;
+    }
+
+    _currentlyActiveOfferId = offerId.isNotEmpty ? offerId : rideId;
 
     // Fetch full ride details and verify it's still available
     try {
