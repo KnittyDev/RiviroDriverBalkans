@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../screens/navigation/ride_navigation_screen.dart';
+import '../screens/main_screen.dart';
 import '../services/hot_potato_dispatch_service.dart';
 import '../theme/app_theme.dart';
 
@@ -10,6 +10,17 @@ class HotPotatoRideOfferModal extends StatefulWidget {
   final Future<bool> Function() onAccept;
   final VoidCallback onDecline;
   final VoidCallback onTimeout;
+
+  static BuildContext? _activeModalContext;
+
+  static void dismissCurrentModal() {
+    if (_activeModalContext != null && _activeModalContext!.mounted) {
+      try {
+        Navigator.of(_activeModalContext!).maybePop();
+      } catch (_) {}
+      _activeModalContext = null;
+    }
+  }
 
   const HotPotatoRideOfferModal({
     super.key,
@@ -26,19 +37,26 @@ class HotPotatoRideOfferModal extends StatefulWidget {
     required VoidCallback onDecline,
     required VoidCallback onTimeout,
   }) {
+    dismissCurrentModal();
+
     return showModalBottomSheet(
       context: context,
       isDismissible: false,
       enableDrag: false,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => HotPotatoRideOfferModal(
-        offer: offer,
-        onAccept: onAccept,
-        onDecline: onDecline,
-        onTimeout: onTimeout,
-      ),
-    );
+      builder: (ctx) {
+        _activeModalContext = ctx;
+        return HotPotatoRideOfferModal(
+          offer: offer,
+          onAccept: onAccept,
+          onDecline: onDecline,
+          onTimeout: onTimeout,
+        );
+      },
+    ).whenComplete(() {
+      _activeModalContext = null;
+    });
   }
 
   @override
@@ -91,9 +109,10 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
   }
 
   void _handleTimeout() {
+    if (_isProcessingAccept) return;
     widget.onTimeout();
     if (mounted) {
-      Navigator.of(context, rootNavigator: true).pop();
+      Navigator.of(context).maybePop();
     }
   }
 
@@ -104,37 +123,23 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
     _countdownTimer?.cancel();
     _progressController.stop();
 
-    final success = await widget.onAccept();
-
-    if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-
-    if (success) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => RideNavigationScreen(
-            rideId: widget.offer.rideId,
-            initialStatus: 'accepted',
-            passengerName: widget.offer.passengerName,
-            passengerPhone: widget.offer.passengerPhone,
-            passengerAvatarUrl: widget.offer.passengerAvatarUrl,
-            pickupAddress: widget.offer.pickupAddress,
-            dropoffAddress: widget.offer.destinationAddress,
-            paymentMethod: widget.offer.paymentMethod,
-          ),
-        ),
-      );
+    // 1. Instant close and instant tab switch (0ms delay)
+    if (mounted) {
+      Navigator.of(context).maybePop();
     }
+    MainScreen.switchToTab(1);
+
+    // 2. Perform backend acceptance asynchronously in background
+    await widget.onAccept();
   }
 
   void _handleDecline() {
     _countdownTimer?.cancel();
     _progressController.stop();
-    widget.onDecline();
     if (mounted) {
-      Navigator.of(context, rootNavigator: true).pop();
+      Navigator.of(context).maybePop();
     }
+    widget.onDecline();
   }
 
   @override

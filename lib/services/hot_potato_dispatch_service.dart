@@ -5,8 +5,11 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
+import 'push_notification_service.dart';
 import 'ride_alert_service.dart';
+import '../screens/main_screen.dart';
 import '../widgets/hot_potato_ride_offer_modal.dart';
+import '../widgets/rider_chat_modal.dart';
 
 class RideOfferModel {
   final String offerId;
@@ -57,6 +60,8 @@ class HotPotatoDispatchService {
 
   RealtimeChannel? _offersSubscriptionChannel;
   Timer? _pollingTimer;
+  StreamSubscription? _notificationActionSub;
+  StreamSubscription? _notificationTapSub;
   bool _isListening = false;
   String? _currentlyActiveOfferId;
 
@@ -100,10 +105,90 @@ class HotPotatoDispatchService {
         )
         .subscribe();
 
-    // 2. Initial check for any pending active offer
+    // 2. Subscribe to Push Notification Action Clicks (Accept / Refuse buttons)
+    _notificationActionSub?.cancel();
+    _notificationActionSub = PushNotificationService.onNotificationAction.listen((data) async {
+      final actionType = data['action_type']?.toString();
+      final rideId = data['ride_id']?.toString() ?? '';
+      final offerId = data['offer_id']?.toString() ?? '';
+      final targetDriverId = data['driver_id']?.toString() ?? driverId;
+
+      if (rideId.isEmpty) return;
+
+      if (actionType == PushNotificationService.actionAccept) {
+        debugPrint('🟢 [FCM Action Accept] Instant Optimistic Accept: $rideId');
+        HotPotatoRideOfferModal.dismissCurrentModal();
+        RideAlertService().stopAlert();
+        PushNotificationService.cancelNotification(rideId.hashCode & 0x7FFFFFFF);
+        MainScreen.switchToTab(1); // 0ms Instant Switch to Orders
+
+        // Asynchronously process backend confirmation
+        acceptRideOffer(rideId, offerId, targetDriverId);
+      } else if (actionType == PushNotificationService.actionDecline) {
+        debugPrint('🔴 [FCM Action Refuse] Instant Refuse: $rideId');
+        HotPotatoRideOfferModal.dismissCurrentModal();
+        RideAlertService().stopAlert();
+        PushNotificationService.cancelNotification(rideId.hashCode & 0x7FFFFFFF);
+        rejectRideOffer(rideId, offerId, targetDriverId);
+      }
+    });
+
+    // 3. Subscribe to Notification Body Clicks (Open ride modal / chat modal in app)
+    _notificationTapSub?.cancel();
+    _notificationTapSub = PushNotificationService.onNotificationTap.listen((data) async {
+      final type = data['type']?.toString() ?? 'ride_offer';
+      final rideId = data['ride_id']?.toString() ?? '';
+
+      // 3.1 Handle Chat Message Notification Click -> Open Live Chat Modal
+      if (type == 'chat_message' || type == 'ride_message') {
+        final senderName = data['sender_name']?.toString() ?? 'Passenger';
+        final passengerPhone = data['passenger_phone']?.toString();
+        final passengerAvatarUrl = data['passenger_avatar_url']?.toString();
+
+        if (context.mounted && rideId.isNotEmpty) {
+          debugPrint('💬 [FCM Chat Tap] Opening live chat modal for ride: $rideId');
+          RiderChatModal.show(
+            context,
+            rideId: rideId,
+            passengerName: senderName,
+            passengerPhone: passengerPhone,
+            passengerAvatarUrl: passengerAvatarUrl,
+          );
+        }
+        return;
+      }
+
+      // 3.2 Handle Ride Offer Notification Click
+      if (rideId.isNotEmpty) {
+        // Check if this ride is already accepted
+        try {
+          final ride = await Supabase.instance.client
+              .from('rides')
+              .select('status, driver_id, assigned_driver_id')
+              .eq('id', rideId)
+              .maybeSingle();
+
+          final status = (ride?['status'] ?? '').toString().toLowerCase();
+          if (['accepted', 'arrived', 'in_progress'].contains(status)) {
+            debugPrint('🚖 [FCM Tap] Ride $rideId already active ($status). Switching to Orders tab.');
+            HotPotatoRideOfferModal.dismissCurrentModal();
+            RideAlertService().stopAlert();
+            MainScreen.switchToTab(1); // Orders tab
+            return;
+          }
+        } catch (_) {}
+      }
+
+      if (context.mounted && data.isNotEmpty) {
+        debugPrint('🚖 [FCM Tap] Showing ride offer modal from notification payload: $data');
+        _handleIncomingOffer(context, data);
+      }
+    });
+
+    // 4. Initial check for any pending active offer
     _checkForPendingOffers(context, driverId);
 
-    // 3. Lightweight 3-second heartbeat polling to guarantee zero missed offers
+    // 5. Lightweight 3-second heartbeat polling to guarantee zero missed offers
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (_isListening && context.mounted) {
@@ -116,6 +201,10 @@ class HotPotatoDispatchService {
   void stopListening() {
     _pollingTimer?.cancel();
     _pollingTimer = null;
+    _notificationActionSub?.cancel();
+    _notificationActionSub = null;
+    _notificationTapSub?.cancel();
+    _notificationTapSub = null;
     if (_offersSubscriptionChannel != null) {
       Supabase.instance.client.removeChannel(_offersSubscriptionChannel!);
       _offersSubscriptionChannel = null;
@@ -126,12 +215,28 @@ class HotPotatoDispatchService {
   /// Checks if an active offer is waiting for the driver
   Future<void> _checkForPendingOffers(BuildContext context, String driverId) async {
     try {
-      // 0. Auto-advance expired offers and expire timed-out rides
+      // 0. STRICT CHECK: If driver currently has ANY active accepted/in_progress ride, DO NOT CHECK/SHOW OFFERS!
+      final activeRide = await Supabase.instance.client
+          .from('rides')
+          .select('id, status')
+          .or('driver_id.eq.$driverId,assigned_driver_id.eq.$driverId')
+          .inFilter('status', ['accepted', 'arrived', 'in_progress'])
+          .limit(1)
+          .maybeSingle();
+
+      if (activeRide != null) {
+        HotPotatoRideOfferModal.dismissCurrentModal();
+        RideAlertService().stopAlert();
+        _currentlyActiveOfferId = null;
+        return;
+      }
+
+      // 1. Auto-advance expired offers and expire timed-out rides
       try {
         await Supabase.instance.client.rpc('expire_and_advance_hot_potato_rides');
       } catch (_) {}
 
-      // 1. Check in ride_offers for real active offer
+      // 2. Check in ride_offers for real active offer
       final response = await Supabase.instance.client
           .from('ride_offers')
           .select()
@@ -159,6 +264,25 @@ class HotPotatoDispatchService {
     final expiresAt = DateTime.tryParse(offerRecord['expires_at'] ?? '') ??
         DateTime.now().add(const Duration(seconds: 15));
 
+    // 0. ABSOLUTE CHECK: If driver has ANY active accepted ride, BLOCK modal completely!
+    try {
+      final activeRide = await Supabase.instance.client
+          .from('rides')
+          .select('id, status')
+          .or('driver_id.eq.$driverId,assigned_driver_id.eq.$driverId')
+          .inFilter('status', ['accepted', 'arrived', 'in_progress'])
+          .limit(1)
+          .maybeSingle();
+
+      if (activeRide != null) {
+        debugPrint('🛑 [Hot Potato] Driver already has active ride (${activeRide['id']}). Blocking offer modal!');
+        HotPotatoRideOfferModal.dismissCurrentModal();
+        RideAlertService().stopAlert();
+        _currentlyActiveOfferId = null;
+        return;
+      }
+    } catch (_) {}
+
     // Prevent duplicate modals for same offer
     if (_currentlyActiveOfferId == offerId) return;
 
@@ -175,12 +299,19 @@ class HotPotatoDispatchService {
       final rideStatus = (rideData['status'] ?? '').toString().toLowerCase();
       if (['accepted', 'completed', 'cancelled', 'failed'].contains(rideStatus)) {
         debugPrint('ℹ️ [Hot Potato] Ride $rideId already finished ($rideStatus).');
+        HotPotatoRideOfferModal.dismissCurrentModal();
+        PushNotificationService.cancelNotification(rideId.hashCode & 0x7FFFFFFF);
+        RideAlertService().stopAlert();
+
+        if (rideStatus == 'accepted' &&
+            (rideData['driver_id']?.toString() == driverId ||
+             rideData['assigned_driver_id']?.toString() == driverId)) {
+          MainScreen.switchToTab(1); // Orders Tab
+        }
         return;
       }
 
       _currentlyActiveOfferId = offerId;
-      final diffSec = expiresAt.difference(DateTime.now().toUtc()).inSeconds;
-      final displaySeconds = diffSec > 3 ? diffSec : 15;
 
       final offerModel = RideOfferModel(
         offerId: offerId,
@@ -206,6 +337,23 @@ class HotPotatoDispatchService {
       // Play sound and trigger vibration alert
       RideAlertService().startRideAlert();
 
+      // Show system notification with interactive Accept & Refuse action buttons
+      PushNotificationService.showRideOfferNotification(
+        id: rideId.hashCode & 0x7FFFFFFF,
+        title: '🚖 New Ride Request (€${offerModel.fareAmount.toStringAsFixed(2)})',
+        body: '${offerModel.pickupAddress} ➔ ${offerModel.destinationAddress}',
+        payload: jsonEncode({
+          'type': 'ride_offer',
+          'ride_id': rideId,
+          'offer_id': offerId,
+          'driver_id': driverId,
+          'fare_amount': offerModel.fareAmount,
+          'pickup_address': offerModel.pickupAddress,
+          'destination_address': offerModel.destinationAddress,
+          'passenger_name': offerModel.passengerName,
+        }),
+      );
+
       // Display the interactive 15s Hot Potato Modal
       if (context.mounted) {
         HotPotatoRideOfferModal.show(
@@ -224,6 +372,9 @@ class HotPotatoDispatchService {
   /// Driver Accepts Ride Offer
   Future<bool> acceptRideOffer(String rideId, String offerId, String driverId) async {
     RideAlertService().stopAlert();
+    HotPotatoRideOfferModal.dismissCurrentModal();
+    PushNotificationService.cancelNotification(rideId.hashCode & 0x7FFFFFFF);
+    MainScreen.switchToTab(1);
     _currentlyActiveOfferId = null;
 
     try {
@@ -266,6 +417,8 @@ class HotPotatoDispatchService {
   /// Driver Rejects Ride Offer (Passes to next closest driver immediately!)
   Future<void> rejectRideOffer(String rideId, String offerId, String driverId) async {
     RideAlertService().stopAlert();
+    HotPotatoRideOfferModal.dismissCurrentModal();
+    PushNotificationService.cancelNotification(rideId.hashCode & 0x7FFFFFFF);
     _currentlyActiveOfferId = null;
 
     try {
@@ -293,6 +446,8 @@ class HotPotatoDispatchService {
   /// 15s Timer Expired (Auto-advances queue to next closest driver!)
   Future<void> expireRideOffer(String rideId, String offerId, String driverId) async {
     RideAlertService().stopAlert();
+    HotPotatoRideOfferModal.dismissCurrentModal();
+    PushNotificationService.cancelNotification(rideId.hashCode & 0x7FFFFFFF);
     _currentlyActiveOfferId = null;
 
     try {

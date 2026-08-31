@@ -163,7 +163,7 @@ class StripeService {
         'type': 'deposit',
         'amount': amount,
         'currency': '€',
-        'title': 'Stripe Debt Settlement',
+        'title': 'Online Pay Settlement',
         'subtitle': 'Card payment • Ref #${paymentIntentId.length >= 8 ? paymentIntentId.substring(paymentIntentId.length - 8) : paymentIntentId}',
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });

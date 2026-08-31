@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "478284969407",
+    "project_id": "rivilodriver",
+    "storage_bucket": "rivilodriver.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:478284969407:android:4104b133bcf7f0de3e5d0a",
+        "android_client_info": {
+          "package_name": "com.eubalkans.rivilodriver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA-MkKlP2Zs6wVnuk9Jn6O4YVYv1J2FAew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

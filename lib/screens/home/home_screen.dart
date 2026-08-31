@@ -440,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   },
                   icon: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 20),
                   label: Text(
-                    'Settle Debt via Stripe',
+                    'Settle Debt Online',
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,

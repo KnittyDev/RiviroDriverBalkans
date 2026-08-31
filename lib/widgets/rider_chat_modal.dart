@@ -14,6 +14,8 @@ class RiderChatModal extends StatefulWidget {
   final String? passengerPhone;
   final String? passengerAvatarUrl;
 
+  static String? activeChatRideId;
+
   const RiderChatModal({
     super.key,
     required this.rideId,
@@ -75,6 +77,7 @@ class _RiderChatModalState extends State<RiderChatModal> {
   @override
   void initState() {
     super.initState();
+    RiderChatModal.activeChatRideId = widget.rideId;
     _passengerName = widget.passengerName;
     _passengerPhone = widget.passengerPhone ?? '';
     _passengerAvatarUrl = widget.passengerAvatarUrl;
@@ -130,6 +133,9 @@ class _RiderChatModalState extends State<RiderChatModal> {
 
   @override
   void dispose() {
+    if (RiderChatModal.activeChatRideId == widget.rideId) {
+      RiderChatModal.activeChatRideId = null;
+    }
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();

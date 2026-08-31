@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../services/auth_service.dart';
-import '../../services/ride_alert_service.dart';
 import '../../theme/app_theme.dart';
 import '../navigation/ride_navigation_screen.dart';
 import 'widgets/orders_header.dart';
@@ -13,6 +11,7 @@ import '../../widgets/rider_contact_modal.dart';
 import '../../widgets/rider_chat_modal.dart';
 import '../../widgets/trip_review_modal.dart';
 import '../../widgets/verify_ride_pin_modal.dart';
+import '../../widgets/cancel_ride_modal.dart';
 import '../../services/driver_stats_service.dart';
 
 class OrdersScreen extends StatefulWidget {
@@ -390,6 +389,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     ),
                   ),
                 ).then((_) => _fetchRidesFromSupabase());
+              },
+              onCancelRide: () {
+                CancelRideModal.show(
+                  context,
+                  rideId: rideId,
+                  passengerName: passengerName,
+                  onCancelled: () => _fetchRidesFromSupabase(),
+                );
               },
             ),
           );

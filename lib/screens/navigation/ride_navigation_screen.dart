@@ -13,6 +13,7 @@ import '../../widgets/rider_contact_modal.dart';
 import '../../widgets/rider_chat_modal.dart';
 import '../../widgets/trip_review_modal.dart';
 import '../../widgets/verify_ride_pin_modal.dart';
+import '../../widgets/cancel_ride_modal.dart';
 import '../../services/driver_stats_service.dart';
 
 class RideNavigationScreen extends StatefulWidget {
@@ -638,9 +639,46 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
                               decoration: BoxDecoration(
                                 color: AppColors.primaryActiveBg,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
                               ),
                               child: const Icon(Icons.phone_rounded, color: AppColors.textDark, size: 18),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              if (widget.rideId != null) {
+                                CancelRideModal.show(
+                                  context,
+                                  rideId: widget.rideId!,
+                                  passengerName: widget.passengerName,
+                                  onCancelled: () {
+                                    if (mounted) {
+                                      Navigator.of(context).pop();
+                                    }
+                                  },
+                                );
+                              }
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                              ),
+                              child: Center(
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFFEE2E2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.close_rounded, color: Color(0xFFEF4444), size: 14),
+                                ),
+                              ),
                             ),
                           ),
                         ],

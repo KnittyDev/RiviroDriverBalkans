@@ -176,7 +176,7 @@ class _PaymentSuccessModalState extends State<PaymentSuccessModal>
                 ),
                 _buildReceiptRow(
                   label: 'Payment Method',
-                  value: widget.last4 != null ? 'Card •••• ${widget.last4}' : 'Stripe Card',
+                  value: widget.last4 != null ? 'Card •••• ${widget.last4}' : 'Online Card',
                   valueColor: AppColors.textDark,
                 ),
                 const Padding(

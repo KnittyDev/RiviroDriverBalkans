@@ -342,7 +342,7 @@ class BalanceCard extends StatelessWidget {
                 icon: Icons.sync_alt_rounded,
                 title: 'Easy Ways to Settle',
                 description:
-                    'Your balance automatically balances itself when you complete online/card paid trips, or you can pay via card with Stripe anytime.',
+                    'Your balance automatically balances itself when you complete online/card paid trips, or you can pay via card with Online Pay anytime.',
               ),
               const SizedBox(height: 22),
 
@@ -385,7 +385,7 @@ class BalanceCard extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        'Settle with Stripe',
+                        'Settle Online',
                         style: GoogleFonts.poppins(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,

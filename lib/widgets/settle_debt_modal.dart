@@ -596,7 +596,7 @@ class _SettleDebtModalState extends State<SettleDebtModal> {
                               const Icon(Icons.lock_rounded, color: AppColors.textDark, size: 18),
                               const SizedBox(width: 8),
                               Text(
-                                'Pay €${(_isCustomAmount ? (double.tryParse(_customAmountController.text) ?? 0.0) : _selectedAmount).toStringAsFixed(2)} via Stripe',
+                                'Pay €${(_isCustomAmount ? (double.tryParse(_customAmountController.text) ?? 0.0) : _selectedAmount).toStringAsFixed(2)} Online',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
@@ -612,7 +612,7 @@ class _SettleDebtModalState extends State<SettleDebtModal> {
             // Security note
             Center(
               child: Text(
-                '🔒 Payments are encrypted and securely processed by Stripe.',
+                '🔒 Payments are 256-bit encrypted and securely processed via Online Pay.',
                 style: GoogleFonts.poppins(
                   fontSize: 10.5,
                   color: AppColors.textMuted,

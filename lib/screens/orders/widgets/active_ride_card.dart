@@ -26,6 +26,7 @@ class ActiveRideCard extends StatelessWidget {
   final VoidCallback? onStartRide;
   final VoidCallback? onCompleteRide;
   final VoidCallback? onGoToLocation;
+  final VoidCallback? onCancelRide;
   final bool isAlerting;
   final double progressValue; // 0.0 to 1.0
   final int remainingSeconds; // 12 down to 0
@@ -51,6 +52,7 @@ class ActiveRideCard extends StatelessWidget {
     this.onStartRide,
     this.onCompleteRide,
     this.onGoToLocation,
+    this.onCancelRide,
     this.isAlerting = false,
     this.progressValue = 1.0,
     this.remainingSeconds = 12,
@@ -463,31 +465,82 @@ class ActiveRideCard extends StatelessWidget {
                     ),
                   ),
                 const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    onPressed: onGoToLocation,
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.primary, width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton.icon(
+                          onPressed: onGoToLocation,
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: AppColors.primary, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          icon: const Icon(
+                            Icons.navigation_rounded,
+                            color: AppColors.textDark,
+                            size: 19,
+                          ),
+                          label: Text(
+                            'Go to Location',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    icon: const Icon(
-                      Icons.navigation_rounded,
-                      color: AppColors.textDark,
-                      size: 20,
-                    ),
-                    label: Text(
-                      'Go to Location',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
+                    if (onCancelRide != null) ...[
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: onCancelRide,
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFE2E8F0), width: 1.2),
+                            backgroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 22,
+                                height: 22,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFFEE2E2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  color: Color(0xFFEF4444),
+                                  size: 14,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Cancel',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    ],
+                  ],
                 ),
               ],
             )

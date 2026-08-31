@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'online_duration_service.dart';
 import 'profile_service.dart';
+import 'push_notification_service.dart';
 
 class DriverProfileModel {
   final String id;
@@ -217,6 +218,7 @@ class AuthService {
     currentDriverNotifier.value = profile;
     ProfileService.initFromDriver(profile);
     OnlineDurationService.init(isCurrentlyOnline: profile.isOnline);
+    PushNotificationService.syncTokenWithSupabase();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefKey, jsonEncode(profile.toJson()));
