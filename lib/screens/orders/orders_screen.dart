@@ -13,6 +13,7 @@ import '../../widgets/trip_review_modal.dart';
 import '../../widgets/verify_ride_pin_modal.dart';
 import '../../widgets/cancel_ride_modal.dart';
 import '../../services/driver_stats_service.dart';
+import '../../services/hot_potato_dispatch_service.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -271,7 +272,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
         ..._activeRides.map((ride) {
           final rideId = ride['id']?.toString() ?? '';
           final fareNum = (ride['fare_amount'] as num?)?.toDouble() ?? 0.0;
-          final fareStr = '${fareNum.toStringAsFixed(2)}€';
+          final fareStr = CurrencyHelper.formatFare(
+            fareNum,
+            currencySymbol: ride['currency_symbol']?.toString(),
+            currencyCode: ride['currency_code']?.toString(),
+          );
           final passengerName = ride['passenger_name'] ?? 'Passenger';
           final pickup = ride['pickup_address'] ?? 'Pickup Location';
           final dropoff = ride['destination_address'] ?? 'Destination Location';
@@ -386,6 +391,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       pickupAddress: pickup,
                       dropoffAddress: dropoff,
                       paymentMethod: payment,
+                      fare: fareStr,
                     ),
                   ),
                 ).then((_) => _fetchRidesFromSupabase());
@@ -469,7 +475,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
         ..._completedRides.map((order) {
           final rideId = order['id']?.toString() ?? '';
           final fareNum = (order['fare_amount'] as num?)?.toDouble() ?? 0.0;
-          final fareStr = '+${fareNum.toStringAsFixed(2)}€';
+          final fareStr = CurrencyHelper.formatFare(
+            fareNum,
+            currencySymbol: order['currency_symbol']?.toString(),
+            currencyCode: order['currency_code']?.toString(),
+            includePlus: true,
+          );
           final dateFormatted = _formatDateTime(order['created_at']);
           final tripShortId = '#TR-${rideId.length >= 4 ? rideId.substring(0, 4).toUpperCase() : '0000'}';
 

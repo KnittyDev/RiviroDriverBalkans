@@ -283,7 +283,11 @@ class _HotPotatoRideOfferModalState extends State<HotPotatoRideOfferModal>
                       ),
                     ),
                     Text(
-                      '${widget.offer.fareAmount.toStringAsFixed(2)}€',
+                      CurrencyHelper.formatFare(
+                        widget.offer.fareAmount,
+                        currencySymbol: widget.offer.currencySymbol,
+                        currencyCode: widget.offer.currencyCode,
+                      ),
                       style: GoogleFonts.poppins(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,

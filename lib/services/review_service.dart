@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
+import 'hot_potato_dispatch_service.dart';
 import '../widgets/trip_review_modal.dart';
 
 class ReviewService {
@@ -161,7 +162,12 @@ class ReviewService {
         final rideId = pendingRide['id']?.toString() ?? '';
         final passengerName = pendingRide['passenger_name']?.toString() ?? 'Passenger';
         final passengerAvatarUrl = pendingRide['passenger_avatar_url']?.toString();
-        final fare = pendingRide['fare_amount'] != null ? '${pendingRide['fare_amount']}€' : '24.50€';
+        final fareNum = (pendingRide['fare_amount'] as num?)?.toDouble();
+        final fare = CurrencyHelper.formatFare(
+          fareNum,
+          currencySymbol: pendingRide['currency_symbol']?.toString(),
+          currencyCode: pendingRide['currency_code']?.toString(),
+        );
 
         TripReviewModal.show(
           context,

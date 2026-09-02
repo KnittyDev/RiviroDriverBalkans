@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
+import 'hot_potato_dispatch_service.dart';
 
 class DriverStatsModel {
   final double rating;
@@ -14,6 +15,9 @@ class DriverStatsModel {
   final String carPlate;
   final String carYear;
   final String carColor;
+  final String accountCountry;
+  final String currencyCode;
+  final String currencySymbol;
   final Map<String, double> hourlyEarningsToday;
   final Map<String, double> weeklyDayEarnings;
   final Map<String, double> monthlyEarnings;
@@ -30,10 +34,22 @@ class DriverStatsModel {
     this.carPlate = '',
     this.carYear = '2022',
     this.carColor = 'Black Metallic',
+    this.accountCountry = 'ME',
+    this.currencyCode = 'EUR',
+    this.currencySymbol = '€',
     this.hourlyEarningsToday = const {},
     this.weeklyDayEarnings = const {},
     this.monthlyEarnings = const {},
   });
+
+  String formatCurrency(num? amount, {bool includePlus = false}) {
+    return CurrencyHelper.formatFare(
+      amount,
+      currencySymbol: currencySymbol,
+      currencyCode: currencyCode,
+      includePlus: includePlus,
+    );
+  }
 }
 
 class DriverStatsService {
@@ -105,6 +121,13 @@ class DriverStatsService {
       String carPlate = profileRow?['vehicle_plate']?.toString() ?? 'PG-TX-789';
       String carYear = profileRow?['car_year']?.toString() ?? '2022';
       String carColor = profileRow?['vehicle_color']?.toString() ?? 'Black Metallic';
+      String accountCountry = (profileRow?['account_country'] ?? 'ME').toString().toUpperCase();
+      String currencyCode = accountCountry == 'MK'
+          ? 'MKD'
+          : (accountCountry == 'AL' ? 'ALL' : (accountCountry == 'RS' ? 'RSD' : 'EUR'));
+      String currencySymbol = accountCountry == 'MK'
+          ? 'MKD'
+          : (accountCountry == 'AL' ? 'Lek' : (accountCountry == 'RS' ? 'RSD' : '€'));
       double driverWallet = (profileRow?['driver_wallet'] as num?)?.toDouble() ??
           (profileRow?['wallet_balance'] as num?)?.toDouble() ??
           0.0;
@@ -203,13 +226,16 @@ class DriverStatsService {
         carPlate: carPlate,
         carYear: carYear,
         carColor: carColor,
+        accountCountry: accountCountry,
+        currencyCode: currencyCode,
+        currencySymbol: currencySymbol,
         hourlyEarningsToday: hourly,
         weeklyDayEarnings: weekly,
         monthlyEarnings: monthly,
       );
 
       statsNotifier.value = updatedStats;
-      debugPrint('✅ [DriverStatsService] Stats loaded: Trips Today=$tripsToday, Earnings Today=${earningsToday.toStringAsFixed(2)}€, Car=$carModel, Plate=$carPlate, Driver Wallet=${effectiveBalance.toStringAsFixed(2)}€');
+      debugPrint('✅ [DriverStatsService] Stats loaded: Trips Today=$tripsToday, Earnings Today=${updatedStats.formatCurrency(earningsToday)}, Car=$carModel, Driver Wallet=${updatedStats.formatCurrency(effectiveBalance)} (Country: $accountCountry)');
 
       return updatedStats;
     } catch (e, stack) {

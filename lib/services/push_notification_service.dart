@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
 import 'encryption_service.dart';
+import 'hot_potato_dispatch_service.dart';
 import 'ride_alert_service.dart';
 import '../widgets/rider_chat_modal.dart';
 
@@ -36,7 +37,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final type = data['type']?.toString() ?? 'ride_offer';
 
     if (type == 'ride_offer') {
-      final fare = data['fare_amount'] != null ? '€${data['fare_amount']}' : 'New Ride';
+      final fareNum = num.tryParse(data['fare_amount']?.toString() ?? '');
+      final currencySymbol = data['currency_symbol']?.toString();
+      final currencyCode = data['currency_code']?.toString();
+      final fare = fareNum != null
+          ? CurrencyHelper.formatFare(fareNum, currencySymbol: currencySymbol, currencyCode: currencyCode)
+          : 'New Ride';
       final pickup = data['pickup_address']?.toString() ?? 'Pickup Location';
       final destination = data['destination_address']?.toString() ?? 'Destination';
       final rideId = data['ride_id']?.toString() ?? '${DateTime.now().millisecondsSinceEpoch}';
@@ -327,7 +333,12 @@ class PushNotificationService {
     final type = data['type']?.toString() ?? 'ride_offer';
 
     if (type == 'ride_offer') {
-      final fare = data['fare_amount'] != null ? '€${data['fare_amount']}' : 'New Ride';
+      final fareNum = num.tryParse(data['fare_amount']?.toString() ?? '');
+      final currencySymbol = data['currency_symbol']?.toString();
+      final currencyCode = data['currency_code']?.toString();
+      final fare = fareNum != null
+          ? CurrencyHelper.formatFare(fareNum, currencySymbol: currencySymbol, currencyCode: currencyCode)
+          : 'New Ride';
       final pickup = data['pickup_address']?.toString() ?? 'Pickup Location';
       final destination = data['destination_address']?.toString() ?? 'Destination';
 

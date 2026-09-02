@@ -19,7 +19,14 @@ class BalanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Parse numeric balance
-    final cleanStr = balance.replaceAll('€', '').replaceAll('Lek', '').replaceAll('+', '').trim();
+    final cleanStr = balance
+        .replaceAll('€', '')
+        .replaceAll('Lek', '')
+        .replaceAll('den', '')
+        .replaceAll('MKD', '')
+        .replaceAll('RSD', '')
+        .replaceAll('+', '')
+        .trim();
     final double numBalance = double.tryParse(cleanStr) ?? 0.0;
     final bool isNegative = numBalance < 0.0 || balance.trim().startsWith('-');
 
@@ -27,7 +34,8 @@ class BalanceCard extends StatelessWidget {
       valueListenable: DriverStatsService.debtLimitNotifier,
       builder: (context, debtLimit, child) {
         final bool isLimitReached = numBalance <= debtLimit;
-        final String limitLabel = '-${debtLimit.abs().toStringAsFixed(0)}€';
+        final stats = DriverStatsService.statsNotifier.value;
+        final String limitLabel = stats.formatCurrency(-debtLimit.abs());
 
         return Container(
           width: double.infinity,
@@ -221,6 +229,7 @@ class BalanceCard extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (context) {
         final safeBottom = MediaQuery.of(context).padding.bottom + 18;
+        final stats = DriverStatsService.statsNotifier.value;
         final limitAmount = debtLimit.abs().toStringAsFixed(2);
         final currentAmount = numBalance.abs().toStringAsFixed(2);
 
@@ -328,14 +337,14 @@ class BalanceCard extends StatelessWidget {
                 icon: Icons.payments_outlined,
                 title: 'You Kept 100% of the Cash Fare',
                 description:
-                    'When passengers pay cash, you keep all of it in your pocket. The platform\'s small commission ($currentAmount€) is recorded to your balance.',
+                    'When passengers pay cash, you keep all of it in your pocket. The platform\'s small commission (${stats.formatCurrency(numBalance.abs())}) is recorded to your balance.',
               ),
               const SizedBox(height: 12),
               _buildExplanationItem(
                 icon: Icons.local_taxi_rounded,
                 title: 'Keep Taking Rides Freely',
                 description:
-                    'You are not blocked! You can freely continue accepting ride requests until reaching your maximum limit of -$limitAmount€.',
+                    'You are not blocked! You can freely continue accepting ride requests until reaching your maximum limit of ${stats.formatCurrency(-debtLimit.abs())}.',
               ),
               const SizedBox(height: 12),
               _buildExplanationItem(

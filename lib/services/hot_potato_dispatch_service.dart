@@ -11,6 +11,64 @@ import '../screens/main_screen.dart';
 import '../widgets/hot_potato_ride_offer_modal.dart';
 import '../widgets/rider_chat_modal.dart';
 
+class CurrencyHelper {
+  /// Dynamically formats a ride fare with its currency symbol/code.
+  /// Examples:
+  /// - 1500 with 'den' / 'MKD' -> '1500 den' (or '+1500 den')
+  /// - 24.50 with '€' / 'EUR'  -> '24.50€'   (or '+24.50€')
+  /// - 500 with 'Lek' / 'ALL'  -> '500 Lek'
+  /// - 600 with 'RSD'          -> '600 RSD'
+  static String formatFare(
+    num? amount, {
+    String? currencySymbol,
+    String? currencyCode,
+    bool includePlus = false,
+  }) {
+    if (amount == null) {
+      return includePlus ? '+0.00€' : '0.00€';
+    }
+
+    final double val = amount.toDouble();
+
+    // Determine symbol
+    String symbol = (currencySymbol != null && currencySymbol.trim().isNotEmpty)
+        ? currencySymbol.trim()
+        : '';
+
+    if (symbol.toLowerCase() == 'den') {
+      symbol = 'MKD';
+    }
+
+    if (symbol.isEmpty) {
+      final code = (currencyCode ?? '').toUpperCase();
+      if (code == 'MKD') {
+        symbol = 'MKD';
+      } else if (code == 'ALL') {
+        symbol = 'Lek';
+      } else if (code == 'RSD') {
+        symbol = 'RSD';
+      } else {
+        symbol = '€';
+      }
+    }
+
+    final String lowerSymbol = symbol.toLowerCase();
+    final bool isIntegerCurrency = ['den', 'lek', 'rsd', 'mkd', 'all'].contains(lowerSymbol);
+    final String prefix = includePlus ? '+' : '';
+
+    if (symbol == '€') {
+      return '$prefix${val.toStringAsFixed(2)}€';
+    } else if (isIntegerCurrency) {
+      final String formattedNum = (val % 1 == 0)
+          ? val.toInt().toString()
+          : val.toStringAsFixed(2);
+      return '$prefix$formattedNum $symbol';
+    } else {
+      return '$prefix${val.toStringAsFixed(2)} $symbol';
+    }
+  }
+}
+
 class RideOfferModel {
   final String offerId;
   final String rideId;
@@ -25,6 +83,8 @@ class RideOfferModel {
   final double destinationLat;
   final double destinationLng;
   final double fareAmount;
+  final String currencySymbol;
+  final String currencyCode;
   final String rideType;
   final String paymentMethod;
   final String passengerName;
@@ -45,6 +105,8 @@ class RideOfferModel {
     required this.destinationLat,
     required this.destinationLng,
     required this.fareAmount,
+    this.currencySymbol = '€',
+    this.currencyCode = 'EUR',
     this.rideType = 'Standard',
     this.paymentMethod = 'Cash',
     this.passengerName = 'Customer',
@@ -342,11 +404,19 @@ class HotPotatoDispatchService {
         destinationLat: (rideData['destination_lat'] as num?)?.toDouble() ?? 42.450,
         destinationLng: (rideData['destination_lng'] as num?)?.toDouble() ?? 19.285,
         fareAmount: (rideData['fare_amount'] as num?)?.toDouble() ?? 24.50,
+        currencySymbol: rideData['currency_symbol']?.toString() ?? offerRecord['currency_symbol']?.toString() ?? '€',
+        currencyCode: rideData['currency_code']?.toString() ?? offerRecord['currency_code']?.toString() ?? 'EUR',
         rideType: rideData['ride_type'] ?? 'Standard Ride',
         paymentMethod: rideData['payment_method'] ?? 'Cash',
         passengerName: rideData['passenger_name'] ?? 'Arif CAN',
         passengerPhone: rideData['passenger_phone'] ?? '',
         passengerAvatarUrl: rideData['passenger_avatar_url'],
+      );
+
+      final formattedFare = CurrencyHelper.formatFare(
+        offerModel.fareAmount,
+        currencySymbol: offerModel.currencySymbol,
+        currencyCode: offerModel.currencyCode,
       );
 
       // Play sound and trigger vibration alert
@@ -355,7 +425,7 @@ class HotPotatoDispatchService {
       // Show system notification with interactive Accept & Refuse action buttons
       PushNotificationService.showRideOfferNotification(
         id: rideId.hashCode & 0x7FFFFFFF,
-        title: '🚖 New Ride Request (€${offerModel.fareAmount.toStringAsFixed(2)})',
+        title: '🚖 New Ride Request ($formattedFare)',
         body: '${offerModel.pickupAddress} ➔ ${offerModel.destinationAddress}',
         payload: jsonEncode({
           'type': 'ride_offer',
@@ -363,6 +433,8 @@ class HotPotatoDispatchService {
           'offer_id': offerId,
           'driver_id': driverId,
           'fare_amount': offerModel.fareAmount,
+          'currency_symbol': offerModel.currencySymbol,
+          'currency_code': offerModel.currencyCode,
           'pickup_address': offerModel.pickupAddress,
           'destination_address': offerModel.destinationAddress,
           'passenger_name': offerModel.passengerName,

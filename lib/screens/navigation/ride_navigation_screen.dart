@@ -25,6 +25,7 @@ class RideNavigationScreen extends StatefulWidget {
   final String pickupAddress;
   final String dropoffAddress;
   final String paymentMethod;
+  final String? fare;
 
   const RideNavigationScreen({
     super.key,
@@ -36,6 +37,7 @@ class RideNavigationScreen extends StatefulWidget {
     this.pickupAddress = 'Center Siedlce, Poland',
     this.dropoffAddress = 'Galeria Siedlce, Poland',
     this.paymentMethod = 'Online',
+    this.fare,
   });
 
   @override
@@ -816,7 +818,7 @@ class _RideNavigationScreenState extends State<RideNavigationScreen> {
                                     rideId: currentRideId,
                                     passengerName: passengerName,
                                     passengerAvatarUrl: passengerAvatar,
-                                    fare: '24.50€',
+                                    fare: widget.fare ?? '24.50€',
                                     tripId: '#TR-${currentRideId.substring(0, 4).toUpperCase()}',
                                   );
                                 }

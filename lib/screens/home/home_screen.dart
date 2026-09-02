@@ -233,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       valueListenable: OnlineDurationService.onlineTimeStringNotifier,
                       builder: (context, onlineTimeStr, child) {
                         return QuickStatsStrip(
-                          todayEarnings: '${stats.earningsToday.toStringAsFixed(2)}€',
+                          todayEarnings: stats.formatCurrency(stats.earningsToday),
                           todayTrips: '${stats.tripsToday} Trips',
                           onlineTime: onlineTimeStr,
                         );
@@ -326,7 +326,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ..._recentTrips.map((order) {
                     final rideId = order['id']?.toString() ?? '';
                     final fareNum = (order['fare_amount'] as num?)?.toDouble() ?? 0.0;
-                    final fareStr = '+${fareNum.toStringAsFixed(2)}€';
+                    final fareStr = CurrencyHelper.formatFare(
+                      fareNum,
+                      currencySymbol: order['currency_symbol']?.toString(),
+                      currencyCode: order['currency_code']?.toString(),
+                      includePlus: true,
+                    );
                     final dateFormatted = _formatDateTime(order['created_at']);
                     final tripShortId = '#TR-${rideId.length >= 4 ? rideId.substring(0, 4).toUpperCase() : '0000'}';
 
@@ -416,8 +421,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Builder(
                 builder: (context) {
                   final limitVal = DriverStatsService.debtLimitNotifier.value;
+                  final stats = DriverStatsService.statsNotifier.value;
                   return Text(
-                    'Your outstanding commission debt is ${currentBalance.toStringAsFixed(2)}€ (Limit: -${limitVal.abs().toStringAsFixed(2)}€). You cannot go online until this debt is settled.',
+                    'Your outstanding commission debt is ${stats.formatCurrency(currentBalance)} (Limit: ${stats.formatCurrency(-limitVal.abs())}). You cannot go online until this debt is settled.',
                     style: GoogleFonts.poppins(
                       fontSize: 12.5,
                       color: AppColors.textMuted,

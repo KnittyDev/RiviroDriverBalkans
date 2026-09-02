@@ -67,7 +67,7 @@ class _DailyIncomeChartState extends State<DailyIncomeChart> {
   String _getTotalIncome(DriverStatsModel stats) {
     switch (_selectedTimeframe) {
       case IncomeTimeframe.daily:
-        return '${stats.earningsToday.toStringAsFixed(2)}€';
+        return stats.formatCurrency(stats.earningsToday);
       case IncomeTimeframe.weekly:
         double weekSum = 0.0;
         for (final v in stats.weeklyDayEarnings.values) {
@@ -76,7 +76,7 @@ class _DailyIncomeChartState extends State<DailyIncomeChart> {
         if (weekSum <= 0 && stats.earningsToday > 0) {
           weekSum = stats.earningsToday;
         }
-        return '${weekSum.toStringAsFixed(2)}€';
+        return stats.formatCurrency(weekSum);
       case IncomeTimeframe.monthly:
         double monthSum = 0.0;
         for (final v in stats.monthlyEarnings.values) {
@@ -85,7 +85,7 @@ class _DailyIncomeChartState extends State<DailyIncomeChart> {
         if (monthSum <= 0) {
           monthSum = stats.earningsToday > 0 ? stats.earningsToday : stats.totalBalance.clamp(0.0, 999999.0);
         }
-        return '${monthSum.toStringAsFixed(2)}€';
+        return stats.formatCurrency(monthSum);
     }
   }
 
@@ -93,11 +93,11 @@ class _DailyIncomeChartState extends State<DailyIncomeChart> {
     switch (_selectedTimeframe) {
       case IncomeTimeframe.daily:
         final max = (stats.earningsToday > 0 ? stats.earningsToday * 1.4 : 100.0).clamp(50.0, 1000.0);
-        return '${max.toInt()}€';
+        return stats.formatCurrency(max.toInt());
       case IncomeTimeframe.weekly:
-        return '500€';
+        return stats.formatCurrency(500);
       case IncomeTimeframe.monthly:
-        return '2000€';
+        return stats.formatCurrency(2000);
     }
   }
 
@@ -105,11 +105,11 @@ class _DailyIncomeChartState extends State<DailyIncomeChart> {
     switch (_selectedTimeframe) {
       case IncomeTimeframe.daily:
         final mid = (stats.earningsToday > 0 ? stats.earningsToday * 0.7 : 50.0).clamp(25.0, 500.0);
-        return '${mid.toInt()}€';
+        return stats.formatCurrency(mid.toInt());
       case IncomeTimeframe.weekly:
-        return '250€';
+        return stats.formatCurrency(250);
       case IncomeTimeframe.monthly:
-        return '1000€';
+        return stats.formatCurrency(1000);
     }
   }
 

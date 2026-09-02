@@ -297,14 +297,17 @@ class _SettleDebtModalState extends State<SettleDebtModal> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        '-${fullDebt.toStringAsFixed(2)}€',
-                        style: GoogleFonts.poppins(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFFDC2626),
-                        ),
-                      ),
+                      Builder(builder: (context) {
+                        final stats = DriverStatsService.statsNotifier.value;
+                        return Text(
+                          stats.formatCurrency(-fullDebt),
+                          style: GoogleFonts.poppins(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFFDC2626),
+                          ),
+                        );
+                      }),
                     ],
                   ),
                   Container(
@@ -317,6 +320,7 @@ class _SettleDebtModalState extends State<SettleDebtModal> {
                     child: ValueListenableBuilder<double>(
                       valueListenable: DriverStatsService.debtLimitNotifier,
                       builder: (context, debtLimit, child) {
+                        final stats = DriverStatsService.statsNotifier.value;
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -328,7 +332,7 @@ class _SettleDebtModalState extends State<SettleDebtModal> {
                               ),
                             ),
                             Text(
-                              '-${debtLimit.abs().toStringAsFixed(2)}€',
+                              stats.formatCurrency(-debtLimit.abs()),
                               style: GoogleFonts.poppins(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -357,53 +361,62 @@ class _SettleDebtModalState extends State<SettleDebtModal> {
             const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildAmountPill(
-                    label: 'Full (${fullDebt.toStringAsFixed(2)}€)',
-                    amount: fullDebt,
-                    isSelected: !_isCustomAmount && _selectedAmount == fullDebt,
-                  ),
-                  _buildAmountPill(
-                    label: '10.00€',
-                    amount: 10.0,
-                    isSelected: !_isCustomAmount && _selectedAmount == 10.0,
-                  ),
-                  _buildAmountPill(
-                    label: '20.00€',
-                    amount: 20.0,
-                    isSelected: !_isCustomAmount && _selectedAmount == 20.0,
-                  ),
-                  _buildAmountPill(
-                    label: 'Custom',
-                    amount: 0.0,
-                    isSelected: _isCustomAmount,
-                    isCustom: true,
-                  ),
-                ],
-              ),
+              child: Builder(builder: (context) {
+                final stats = DriverStatsService.statsNotifier.value;
+                final isMKD = stats.accountCountry == 'MK';
+                final p1 = isMKD ? 500.0 : 10.0;
+                final p2 = isMKD ? 1000.0 : 20.0;
+                return Row(
+                  children: [
+                    _buildAmountPill(
+                      label: 'Full (${stats.formatCurrency(fullDebt)})',
+                      amount: fullDebt,
+                      isSelected: !_isCustomAmount && _selectedAmount == fullDebt,
+                    ),
+                    _buildAmountPill(
+                      label: stats.formatCurrency(p1),
+                      amount: p1,
+                      isSelected: !_isCustomAmount && _selectedAmount == p1,
+                    ),
+                    _buildAmountPill(
+                      label: stats.formatCurrency(p2),
+                      amount: p2,
+                      isSelected: !_isCustomAmount && _selectedAmount == p2,
+                    ),
+                    _buildAmountPill(
+                      label: 'Custom',
+                      amount: 0.0,
+                      isSelected: _isCustomAmount,
+                      isCustom: true,
+                    ),
+                  ],
+                );
+              }),
             ),
 
             if (_isCustomAmount) ...[
               const SizedBox(height: 10),
-              TextField(
-                controller: _customAmountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Custom Amount (€)',
-                  labelStyle: GoogleFonts.poppins(fontSize: 13, color: AppColors.textMuted),
-                  prefixText: '€ ',
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.border),
+              Builder(builder: (context) {
+                final stats = DriverStatsService.statsNotifier.value;
+                return TextField(
+                  controller: _customAmountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Custom Amount (${stats.currencySymbol})',
+                    labelStyle: GoogleFonts.poppins(fontSize: 13, color: AppColors.textMuted),
+                    prefixText: '${stats.currencySymbol} ',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                    ),
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                  ),
-                ),
-              ),
+                );
+              }),
             ],
             const SizedBox(height: 16),
 
@@ -595,14 +608,18 @@ class _SettleDebtModalState extends State<SettleDebtModal> {
                             children: [
                               const Icon(Icons.lock_rounded, color: AppColors.textDark, size: 18),
                               const SizedBox(width: 8),
-                              Text(
-                                'Pay €${(_isCustomAmount ? (double.tryParse(_customAmountController.text) ?? 0.0) : _selectedAmount).toStringAsFixed(2)} Online',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textDark,
-                                ),
-                              ),
+                              Builder(builder: (context) {
+                                final stats = DriverStatsService.statsNotifier.value;
+                                final amount = _isCustomAmount ? (double.tryParse(_customAmountController.text) ?? 0.0) : _selectedAmount;
+                                return Text(
+                                  'Pay ${stats.formatCurrency(amount)} Online',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textDark,
+                                  ),
+                                );
+                              }),
                             ],
                           ),
               ),

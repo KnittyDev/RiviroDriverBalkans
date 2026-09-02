@@ -330,68 +330,72 @@ class _WithdrawModalState extends State<WithdrawModal> {
         ),
         const SizedBox(height: 16),
 
-        // Available Balance Notice
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Withdrawal Amount (€)',
-              style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textDark),
-            ),
-            Text(
-              'Available: €${_currentWallet.toStringAsFixed(2)}',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: _currentWallet > 0 ? const Color(0xFF16A34A) : AppColors.textMuted,
+        Builder(builder: (context) {
+          final stats = DriverStatsService.statsNotifier.value;
+          final symbol = stats.currencySymbol;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Withdrawal Amount ($symbol)',
+                    style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textDark),
+                  ),
+                  Text(
+                    'Available: ${stats.formatCurrency(_currentWallet)}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _currentWallet > 0 ? const Color(0xFF16A34A) : AppColors.textMuted,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
+              const SizedBox(height: 6),
 
-        // Amount Input Field
-        TextField(
-          controller: _amountController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textDark),
-          decoration: InputDecoration(
-            prefixIcon: const Padding(
-              padding: EdgeInsets.only(left: 16, right: 8, top: 12, bottom: 12),
-              child: Text(
-                '€',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textDark),
+              // Amount Input Field
+              TextField(
+                controller: _amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textDark),
+                decoration: InputDecoration(
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.only(left: 16, right: 8, top: 12, bottom: 12),
+                    child: Text(
+                      symbol,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textDark),
+                    ),
+                  ),
+                  hintText: '0.00',
+                  hintStyle: GoogleFonts.poppins(color: AppColors.textMuted.withValues(alpha: 0.5)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                  ),
+                ),
               ),
-            ),
-            filled: true,
-            fillColor: const Color(0xFFF8FAFC),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AppColors.border),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AppColors.border),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
+              const SizedBox(height: 10),
 
-        // Preset Quick Choice Chips
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildPresetChip('25€', '25.00'),
-            _buildPresetChip('50€', '50.00'),
-            _buildPresetChip('100€', '100.00'),
-            _buildPresetChip('Max (€${_currentWallet.toStringAsFixed(0)})', _currentWallet.toStringAsFixed(2)),
-          ],
-        ),
+              // Preset Quick Choice Chips
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildPresetChip(stats.formatCurrency(stats.accountCountry == 'MK' ? 1000 : 25), stats.accountCountry == 'MK' ? '1000.00' : '25.00'),
+                  _buildPresetChip(stats.formatCurrency(stats.accountCountry == 'MK' ? 2500 : 50), stats.accountCountry == 'MK' ? '2500.00' : '50.00'),
+                  _buildPresetChip(stats.formatCurrency(stats.accountCountry == 'MK' ? 5000 : 100), stats.accountCountry == 'MK' ? '5000.00' : '100.00'),
+                  _buildPresetChip('Max (${stats.formatCurrency(_currentWallet)})', _currentWallet.toStringAsFixed(2)),
+                ],
+              ),
+            ],
+          );
+        }),
         const SizedBox(height: 16),
 
         // Payout Method Speed Selection

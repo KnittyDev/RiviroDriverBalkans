@@ -18,6 +18,7 @@ class DriverProfileModel {
   final double? currentLat;
   final double? currentLng;
   final String? avatarUrl;
+  final String accountCountry;
 
   DriverProfileModel({
     required this.id,
@@ -29,6 +30,7 @@ class DriverProfileModel {
     this.currentLat,
     this.currentLng,
     this.avatarUrl,
+    this.accountCountry = 'ME',
   });
 
   factory DriverProfileModel.fromJson(Map<String, dynamic> json) {
@@ -42,6 +44,7 @@ class DriverProfileModel {
       currentLat: json['current_lat'] != null ? (json['current_lat'] as num).toDouble() : null,
       currentLng: json['current_lng'] != null ? (json['current_lng'] as num).toDouble() : null,
       avatarUrl: json['avatar_url'] as String?,
+      accountCountry: (json['account_country'] ?? json['accountCountry'] ?? 'ME').toString().toUpperCase(),
     );
   }
 
@@ -56,6 +59,7 @@ class DriverProfileModel {
       'current_lat': currentLat,
       'current_lng': currentLng,
       'avatar_url': avatarUrl,
+      'account_country': accountCountry,
     };
   }
 

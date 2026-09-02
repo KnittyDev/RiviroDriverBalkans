@@ -66,11 +66,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: ValueListenableBuilder<DriverStatsModel>(
           valueListenable: DriverStatsService.statsNotifier,
           builder: (context, stats, child) {
-            final balanceStr = '${stats.totalBalance.toStringAsFixed(2)}€';
+            final balanceStr = stats.formatCurrency(stats.totalBalance);
             final ratingStr = stats.rating.toStringAsFixed(1);
             final tripsStr = '${stats.tripsToday}';
             final carStr = stats.carModel;
-            final earnedTodayStr = '+${stats.earningsToday.toStringAsFixed(2)}€';
+            final earnedTodayStr = stats.formatCurrency(stats.earningsToday, includePlus: true);
 
             return RefreshIndicator(
               onRefresh: _loadAllDriverData,
