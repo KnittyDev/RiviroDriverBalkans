@@ -85,6 +85,9 @@
 		<string>whatsapp</string>
 		<string>viber</string>
 		<string>tel</string>
+		<string>maps</string>
+		<string>comgooglemaps</string>
+		<string>waze</string>
 	</array>
 </dict>
 </plist>

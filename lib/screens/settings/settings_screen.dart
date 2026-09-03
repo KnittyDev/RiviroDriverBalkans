@@ -15,6 +15,7 @@ import 'pages/driver_license_screen.dart';
 import 'pages/vehicle_insurance_screen.dart';
 import 'pages/terms_of_service_screen.dart';
 import 'pages/privacy_policy_screen.dart';
+import 'pages/driver_faq_screen.dart';
 import '../../widgets/driver_growth_boost_modal.dart';
 import '../../widgets/boost_calculator_modal.dart';
 import '../auth/auth_screen.dart';
@@ -464,6 +465,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ]),
               const SizedBox(height: 24),
             ],
+
+            // Help & Driver Guide
+            _buildSectionTitle('Help & Driver Guide'),
+            const SizedBox(height: 10),
+            _buildSettingsContainer([
+              _buildSimpleTile(
+                title: 'Driver FAQ & Handbook',
+                subtitle: 'Hot Potato offers, navigation, PIN verification, wallet & payouts',
+                icon: Icons.help_outline_rounded,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DriverFaqScreen()),
+                  );
+                },
+              ),
+            ]),
+            const SizedBox(height: 24),
 
             // 6. System & Legal Policies
             _buildSectionTitle('Legal & System'),

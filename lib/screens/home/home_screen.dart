@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       final response = await filterBuilder
           .order('created_at', ascending: false)
-          .limit(10);
+          .limit(5);
       final List<Map<String, dynamic>> fetched = List<Map<String, dynamic>>.from(response);
 
       if (mounted) {

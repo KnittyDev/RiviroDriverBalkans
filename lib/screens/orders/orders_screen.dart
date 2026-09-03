@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
-import '../navigation/ride_navigation_screen.dart';
+import '../../services/map_launcher_service.dart';
 import 'widgets/orders_header.dart';
 import 'widgets/active_ride_card.dart';
 import 'widgets/order_item_card.dart';
@@ -12,6 +12,7 @@ import '../../widgets/rider_chat_modal.dart';
 import '../../widgets/trip_review_modal.dart';
 import '../../widgets/verify_ride_pin_modal.dart';
 import '../../widgets/cancel_ride_modal.dart';
+import '../../services/auth_service.dart';
 import '../../services/driver_stats_service.dart';
 import '../../services/hot_potato_dispatch_service.dart';
 
@@ -30,40 +31,50 @@ class _OrdersScreenState extends State<OrdersScreen> {
   List<Map<String, dynamic>> _activeRides = [];
   List<Map<String, dynamic>> _completedRides = [];
 
+  // Infinite Scroll Pagination for Trip History
+  final ScrollController _scrollController = ScrollController();
+  static const int _historyPageSize = 10;
+  int _historyPage = 0;
+  bool _hasMoreHistory = true;
+  bool _isLoadingMoreHistory = false;
+
   RealtimeChannel? _ridesChannel;
 
   @override
   void initState() {
     super.initState();
-    _fetchRidesFromSupabase();
+    _scrollController.addListener(_onScroll);
+    _loadInitialData();
     _subscribeToRidesRealtime();
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     if (_ridesChannel != null) {
       Supabase.instance.client.removeChannel(_ridesChannel!);
     }
     super.dispose();
   }
 
-  /// Subscribes to live changes in public:rides table
-  void _subscribeToRidesRealtime() {
-    _ridesChannel = Supabase.instance.client
-        .channel('public:rides:orders_screen')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'rides',
-          callback: (payload) {
-            _fetchRidesFromSupabase(isBackground: true);
-          },
-        )
-        .subscribe();
+  void _onScroll() {
+    if (_selectedTab == 1 &&
+        !_isLoading &&
+        !_isLoadingMoreHistory &&
+        _hasMoreHistory &&
+        _scrollController.hasClients &&
+        _scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 250) {
+      _loadMoreHistory();
+    }
   }
 
-  /// Fetches real ride data from Supabase
-  Future<void> _fetchRidesFromSupabase({bool isBackground = false}) async {
+  String? get _effectiveDriverId =>
+      Supabase.instance.client.auth.currentUser?.id ??
+      AuthService.currentDriverNotifier.value?.id;
+
+  /// Loads initial active rides and the first page of history
+  Future<void> _loadInitialData({bool isBackground = false}) async {
     if (!isBackground) {
       setState(() {
         _isLoading = true;
@@ -72,36 +83,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
 
     try {
-      // 1. Advance expired hot potato offers and fail timed-out rides
       try {
         await Supabase.instance.client.rpc('expire_and_advance_hot_potato_rides');
       } catch (_) {}
 
-      // 2. Fetch updated rides
-      final response = await Supabase.instance.client
-          .from('rides')
-          .select()
-          .order('created_at', ascending: false);
-
-      final List<Map<String, dynamic>> allRides = List<Map<String, dynamic>>.from(response);
-
-      final active = <Map<String, dynamic>>[];
-      final completed = <Map<String, dynamic>>[];
-
-      for (final ride in allRides) {
-        final status = (ride['status'] ?? '').toString().toLowerCase();
-        // ONLY ACCEPTED / ONGOING RIDES in Active Orders tab!
-        if (['accepted', 'on_the_way', 'arrived', 'in_progress'].contains(status)) {
-          active.add(ride);
-        } else if (['completed', 'finished', 'cancelled', 'failed'].contains(status)) {
-          completed.add(ride);
-        }
-      }
+      await Future.wait([
+        _fetchActiveRides(),
+        _fetchHistoryRides(isRefresh: true),
+      ]);
 
       if (mounted) {
         setState(() {
-          _activeRides = active;
-          _completedRides = completed;
           _isLoading = false;
         });
       }
@@ -114,6 +106,103 @@ class _OrdersScreenState extends State<OrdersScreen> {
         });
       }
     }
+  }
+
+  Future<void> _fetchRidesFromSupabase({bool isBackground = false}) async {
+    await _loadInitialData(isBackground: isBackground);
+  }
+
+  Future<void> _fetchActiveRides() async {
+    final driverId = _effectiveDriverId;
+    var query = Supabase.instance.client.from('rides').select();
+
+    if (driverId != null && driverId.isNotEmpty) {
+      query = query.or('driver_id.eq.$driverId,assigned_driver_id.eq.$driverId');
+    }
+
+    final response = await query
+        .inFilter('status', ['accepted', 'on_the_way', 'arrived', 'in_progress'])
+        .order('created_at', ascending: false);
+
+    if (mounted) {
+      setState(() {
+        _activeRides = List<Map<String, dynamic>>.from(response);
+      });
+    }
+  }
+
+  Future<void> _fetchHistoryRides({bool isRefresh = false}) async {
+    if (isRefresh) {
+      _historyPage = 0;
+      _hasMoreHistory = true;
+    }
+
+    final driverId = _effectiveDriverId;
+    final from = _historyPage * _historyPageSize;
+    final to = from + _historyPageSize - 1;
+
+    var query = Supabase.instance.client.from('rides').select();
+
+    if (driverId != null && driverId.isNotEmpty) {
+      query = query.or('driver_id.eq.$driverId,assigned_driver_id.eq.$driverId');
+    }
+
+    final response = await query
+        .inFilter('status', ['completed', 'finished', 'cancelled', 'failed'])
+        .order('created_at', ascending: false)
+        .range(from, to);
+
+    final List<Map<String, dynamic>> newItems = List<Map<String, dynamic>>.from(response);
+
+    if (mounted) {
+      setState(() {
+        if (isRefresh) {
+          _completedRides = newItems;
+        } else {
+          _completedRides.addAll(newItems);
+        }
+        if (newItems.length < _historyPageSize) {
+          _hasMoreHistory = false;
+        } else {
+          _historyPage++;
+        }
+      });
+    }
+  }
+
+  Future<void> _loadMoreHistory() async {
+    if (_isLoadingMoreHistory || !_hasMoreHistory) return;
+
+    setState(() {
+      _isLoadingMoreHistory = true;
+    });
+
+    try {
+      await _fetchHistoryRides(isRefresh: false);
+    } catch (e) {
+      debugPrint('⚠️ [OrdersScreen] Error loading more history: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingMoreHistory = false;
+        });
+      }
+    }
+  }
+
+  /// Subscribes to live changes in public:rides table
+  void _subscribeToRidesRealtime() {
+    _ridesChannel = Supabase.instance.client
+        .channel('public:rides:orders_screen')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'rides',
+          callback: (payload) {
+            _loadInitialData(isBackground: true);
+          },
+        )
+        .subscribe();
   }
 
   String _formatDateTime(String? isoString) {
@@ -154,6 +243,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           onRefresh: () => _fetchRidesFromSupabase(),
           color: AppColors.primary,
           child: SingleChildScrollView(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
             padding: EdgeInsets.only(
               left: 18,
@@ -171,6 +261,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     setState(() {
                       _selectedTab = index;
                     });
+                    if (index == 1 && _completedRides.isEmpty && _hasMoreHistory && !_isLoading) {
+                      _fetchHistoryRides(isRefresh: true);
+                    }
                   },
                 ),
                 const SizedBox(height: 16),
@@ -379,22 +472,22 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 }
               },
               onGoToLocation: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => RideNavigationScreen(
-                      rideId: rideId,
-                      initialStatus: status,
-                      passengerName: passengerName,
-                      passengerPhone: ride['passenger_phone'] ?? '',
-                      passengerAvatarUrl: passengerAvatar,
-                      pickupAddress: pickup,
-                      dropoffAddress: dropoff,
-                      paymentMethod: payment,
-                      fare: fareStr,
-                    ),
-                  ),
-                ).then((_) => _fetchRidesFromSupabase());
+                final bool isGoingToPickup = status == 'accepted' || status == 'on_the_way';
+                final double? lat = isGoingToPickup
+                    ? (ride['pickup_lat'] as num?)?.toDouble()
+                    : (ride['destination_lat'] as num?)?.toDouble();
+                final double? lng = isGoingToPickup
+                    ? (ride['pickup_lng'] as num?)?.toDouble()
+                    : (ride['destination_lng'] as num?)?.toDouble();
+                final String targetAddress = isGoingToPickup
+                    ? (ride['pickup_address']?.toString() ?? pickup)
+                    : (ride['destination_address']?.toString() ?? dropoff);
+
+                MapLauncherService.openTurnByTurnNavigation(
+                  latitude: lat,
+                  longitude: lng,
+                  address: targetAddress,
+                );
               },
               onCancelRide: () {
                 CancelRideModal.show(
@@ -499,6 +592,33 @@ class _OrdersScreenState extends State<OrdersScreen> {
             paymentMethod: order['payment_method'] ?? 'Online',
           );
         }),
+        if (_isLoadingMoreHistory)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: SizedBox(
+                width: 26,
+                height: 26,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          )
+        else if (!_hasMoreHistory && _completedRides.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: Text(
+                'All trips loaded (${_completedRides.length})',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
