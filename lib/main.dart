@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'firebase_options.dart';
-import 'screens/main_screen.dart';
+import 'screens/auth/root_auth_gate.dart';
 import 'services/push_notification_service.dart';
 import 'theme/app_theme.dart';
 
@@ -52,7 +52,7 @@ class RiviloDriverApp extends StatelessWidget {
       title: 'Rivilo Driver',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const MainScreen(),
+      home: const RootAuthGate(),
     );
   }
 }

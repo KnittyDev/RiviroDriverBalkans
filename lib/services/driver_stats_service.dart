@@ -62,6 +62,18 @@ class DriverStatsService {
   static RealtimeChannel? _profileChannel;
   static RealtimeChannel? _adminSettingsChannel;
 
+  /// Resets driver stats and subscriptions on logout
+  static void reset() {
+    statsNotifier.value = const DriverStatsModel();
+    debtLimitNotifier.value = -30.0;
+    try {
+      _profileChannel?.unsubscribe();
+      _profileChannel = null;
+      _adminSettingsChannel?.unsubscribe();
+      _adminSettingsChannel = null;
+    } catch (_) {}
+  }
+
   /// Fetches real live stats from Supabase profiles and completed rides
   static Future<DriverStatsModel> fetchDriverLiveStats([String? driverId]) async {
     String? effectiveDriverId = driverId ??

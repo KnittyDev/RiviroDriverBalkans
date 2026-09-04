@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../services/driver_stats_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/settle_debt_modal.dart';
+import '../../../widgets/withdraw_history_modal.dart';
 
 class BalanceCard extends StatelessWidget {
   final String balance;
@@ -54,7 +55,7 @@ class BalanceCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top Label & Negative Limit Warning Pill (Tappable for info)
+              // Top Label, Activity Button & Negative Limit Warning Pill
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -66,37 +67,74 @@ class BalanceCard extends StatelessWidget {
                       color: AppColors.textDark.withValues(alpha: 0.75),
                     ),
                   ),
-                  if (isNegative)
-                    GestureDetector(
-                      onTap: () => _showBalanceExplanationModal(context, numBalance, debtLimit),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                        decoration: BoxDecoration(
-                          color: AppColors.textDark,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isLimitReached ? Icons.warning_rounded : Icons.info_outline_rounded,
-                              size: 12,
-                              color: isLimitReached ? const Color(0xFFF59E0B) : Colors.white,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              isLimitReached ? 'Limit Reached ($limitLabel)' : 'Limit: $limitLabel',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: isLimitReached ? const Color(0xFFF59E0B) : Colors.white,
-                                letterSpacing: 0.2,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () => WithdrawHistoryModal.show(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.88),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.receipt_long_rounded,
+                                size: 12,
+                                color: AppColors.textDark,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 4),
+                              Text(
+                                'Activity',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textDark,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
+                      if (isNegative) ...[
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () => _showBalanceExplanationModal(context, numBalance, debtLimit),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: AppColors.textDark,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isLimitReached ? Icons.warning_rounded : Icons.info_outline_rounded,
+                                  size: 12,
+                                  color: isLimitReached ? const Color(0xFFF59E0B) : Colors.white,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isLimitReached ? 'Limit ($limitLabel)' : 'Limit: $limitLabel',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: isLimitReached ? const Color(0xFFF59E0B) : Colors.white,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 6),

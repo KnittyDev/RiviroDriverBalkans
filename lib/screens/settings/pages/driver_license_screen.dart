@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/document_upload_service.dart';
 import '../../../theme/app_theme.dart';
 
 class DriverLicenseScreen extends StatefulWidget {
@@ -58,9 +60,14 @@ class _DriverLicenseScreenState extends State<DriverLicenseScreen> {
           .maybeSingle();
 
       if (profileRow != null && mounted) {
-        _licenseNumberController.text = profileRow['license_number']?.toString() ?? 'DL-9821-48201';
+        final num = profileRow['license_number']?.toString() ?? '';
+        _licenseNumberController.text = num == 'DL-9821-48201' ? '' : num;
+
         _categoryController.text = profileRow['license_category']?.toString() ?? 'Category B (Passenger Car)';
-        _expiryDateController.text = profileRow['license_expiry_date']?.toString() ?? '14/08/2028';
+
+        final exp = profileRow['license_expiry_date']?.toString() ?? '';
+        _expiryDateController.text = exp == '14/08/2028' ? '' : exp;
+
         _isVerified = profileRow['is_license_verified'] == true;
         _frontImagePath = profileRow['license_front_url']?.toString();
         _backImagePath = profileRow['license_back_url']?.toString();
@@ -161,13 +168,34 @@ class _DriverLicenseScreenState extends State<DriverLicenseScreen> {
     });
 
     try {
+      String? frontUrl = _frontImagePath;
+      String? backUrl = _backImagePath;
+
+      if (_frontImagePath != null && !_frontImagePath!.startsWith('http')) {
+        final uploaded = await DocumentUploadService.uploadLicenseDocument(
+          file: File(_frontImagePath!),
+          driverId: driverId,
+          isFront: true,
+        );
+        if (uploaded != null) frontUrl = uploaded;
+      }
+
+      if (_backImagePath != null && !_backImagePath!.startsWith('http')) {
+        final uploaded = await DocumentUploadService.uploadLicenseDocument(
+          file: File(_backImagePath!),
+          driverId: driverId,
+          isFront: false,
+        );
+        if (uploaded != null) backUrl = uploaded;
+      }
+
       await Supabase.instance.client.from('profiles').update({
         'license_number': licenseNumber,
         'license_category': category.isNotEmpty ? category : 'Category B (Passenger Car)',
         'license_expiry_date': expiry,
         'is_license_verified': true,
-        if (_frontImagePath != null) 'license_front_url': _frontImagePath,
-        if (_backImagePath != null) 'license_back_url': _backImagePath,
+        if (frontUrl != null) 'license_front_url': frontUrl,
+        if (backUrl != null) 'license_back_url': backUrl,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', driverId);
 

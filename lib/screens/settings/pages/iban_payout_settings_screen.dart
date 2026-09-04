@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/auth_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/withdraw_history_modal.dart';
 
 class IbanPayoutSettingsScreen extends StatefulWidget {
   const IbanPayoutSettingsScreen({super.key});
@@ -66,12 +67,18 @@ class _IbanPayoutSettingsScreenState extends State<IbanPayoutSettingsScreen> {
           .maybeSingle();
 
       if (profileRow != null && mounted) {
-        _bankNameController.text = profileRow['bank_name']?.toString() ?? 'NLB Banka AD Podgorica';
+        final bName = profileRow['bank_name']?.toString() ?? '';
+        _bankNameController.text = bName == 'NLB Banka AD Podgorica' ? '' : bName;
+
         _accountHolderController.text = profileRow['account_holder_name']?.toString() ??
             profileRow['full_name']?.toString() ??
             '';
-        _ibanController.text = _formatIban(profileRow['iban']?.toString() ?? 'ME255300000012345678');
-        _swiftController.text = (profileRow['swift_bic']?.toString() ?? 'NLBMMEPG').toUpperCase();
+
+        final bIban = profileRow['iban']?.toString() ?? '';
+        _ibanController.text = bIban == 'ME255300000012345678' ? '' : _formatIban(bIban);
+
+        final bSwift = profileRow['swift_bic']?.toString() ?? '';
+        _swiftController.text = bSwift == 'NLBMMEPG' ? '' : bSwift.toUpperCase();
       }
     } catch (e) {
       debugPrint('⚠️ [IbanPayoutSettings] Error loading bank data: $e');
@@ -165,6 +172,13 @@ class _IbanPayoutSettingsScreenState extends State<IbanPayoutSettingsScreen> {
             color: AppColors.textDark,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long_rounded, color: AppColors.textDark),
+            tooltip: 'Payout History',
+            onPressed: () => WithdrawHistoryModal.show(context, initialFilter: 'payouts'),
+          ),
+        ],
       ),
       body: SafeArea(
         bottom: false,

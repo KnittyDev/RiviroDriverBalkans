@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../main_screen.dart';
+import 'driver_onboarding_screen.dart';
+import 'driver_application_pending_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   final bool initialIsRegister;
@@ -83,7 +86,7 @@ class _AuthScreenState extends State<AuthScreen> {
         SnackBar(
           content: Text(
             _isRegisterMode
-                ? 'Welcome to Rivilo Driver! Registration completed.'
+                ? 'Welcome to Rivilo Driver! Let\'s complete your onboarding.'
                 : 'Welcome back! Logged in successfully.',
             style: GoogleFonts.poppins(fontSize: 12.5),
           ),
@@ -92,11 +95,65 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       );
 
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const MainScreen()),
-        (route) => false,
-      );
+      if (_isRegisterMode) {
+        // Newly registered driver must complete onboarding wizard
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const DriverOnboardingScreen()),
+          (route) => false,
+        );
+      } else {
+        // Inspect driver status on login
+        final driverId = AuthService.currentDriverNotifier.value?.id ??
+            Supabase.instance.client.auth.currentUser?.id;
+        final status = await AuthService.fetchDriverStatus(driverId);
+
+        if (!mounted) return;
+
+        if (status == 'approved') {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+            (route) => false,
+          );
+        } else if (status == 'rejected') {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const DriverApplicationPendingScreen(isRejected: true),
+            ),
+            (route) => false,
+          );
+        } else {
+          // Status is 'pending' or incomplete onboarding
+          final profileRow = await Supabase.instance.client
+              .from('profiles')
+              .select('vehicle_model, license_number')
+              .eq('id', driverId ?? '')
+              .maybeSingle();
+
+          if (!mounted) return;
+
+          final hasVehicle = profileRow != null &&
+              profileRow['vehicle_model'] != null &&
+              profileRow['vehicle_model'].toString().isNotEmpty &&
+              profileRow['vehicle_model'].toString() != 'Mercedes-Benz E-Class';
+
+          if (!hasVehicle) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const DriverOnboardingScreen()),
+              (route) => false,
+            );
+          } else {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const DriverApplicationPendingScreen()),
+              (route) => false,
+            );
+          }
+        }
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

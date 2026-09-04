@@ -16,7 +16,19 @@ class ProfileService {
   static void initFromDriver(DriverProfileModel? driver) {
     if (driver?.avatarUrl != null && driver!.avatarUrl!.isNotEmpty) {
       avatarPathNotifier.value = driver.avatarUrl;
+    } else {
+      avatarPathNotifier.value = null;
     }
+  }
+
+  /// Completely clears avatar state and in-memory image caches on logout
+  static void clear() {
+    avatarPathNotifier.value = null;
+    isUploadingNotifier.value = false;
+    try {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+    } catch (_) {}
   }
 
   // Show permission denied alert dialog with button to open system settings

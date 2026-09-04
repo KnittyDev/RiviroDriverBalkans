@@ -18,6 +18,8 @@ import 'pages/privacy_policy_screen.dart';
 import 'pages/driver_faq_screen.dart';
 import '../../widgets/driver_growth_boost_modal.dart';
 import '../../widgets/boost_calculator_modal.dart';
+import '../../widgets/withdraw_history_modal.dart';
+import '../../widgets/withdraw_modal.dart';
 import '../auth/auth_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -224,6 +226,102 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _showLogoutConfirmationDialog(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626), size: 22),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Log Out',
+              style: GoogleFonts.poppins(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textDark,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to log out of your driver account? You will go offline and will not receive any ride requests.',
+          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textMuted, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            child: Text(
+              'Log Out',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+
+      await AuthService.logout();
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // Dismiss loading
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const AuthScreen()),
+        (route) => false,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Logged out successfully.',
+            style: GoogleFonts.poppins(fontSize: 12.5),
+          ),
+          backgroundColor: AppColors.textDark,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -335,6 +433,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 24),
 
+            // 1. Help & Driver FAQ (Top Priority)
+            _buildSectionTitle('Help & Driver Guide'),
+            const SizedBox(height: 10),
+            _buildSettingsContainer([
+              _buildSimpleTile(
+                title: 'Driver FAQ & Handbook',
+                subtitle: 'Hot Potato offers, navigation, PIN verification, wallet & payouts',
+                icon: Icons.help_outline_rounded,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DriverFaqScreen()),
+                  );
+                },
+              ),
+            ]),
+            const SizedBox(height: 24),
+
             // 2. Performance & Ratings
             _buildSectionTitle('Performance & Ratings'),
             const SizedBox(height: 10),
@@ -362,7 +478,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
             const SizedBox(height: 24),
 
-            // 3. Documents & Compliance
+            // 3. Earnings & Finance
+            _buildSectionTitle('Earnings & Finance'),
+            const SizedBox(height: 10),
+            _buildSettingsContainer([
+              _buildSimpleTile(
+                title: 'Wallet Transactions',
+                subtitle: 'All trip earnings, payouts & transactions',
+                icon: Icons.receipt_long_rounded,
+                onTap: () => WithdrawHistoryModal.show(context),
+              ),
+              const Divider(color: AppColors.border, height: 1),
+              _buildSimpleTile(
+                title: 'Withdraw Balance',
+                subtitle: 'Request a payout to your bank account',
+                icon: Icons.account_balance_wallet_rounded,
+                onTap: () => WithdrawModal.show(context),
+              ),
+              const Divider(color: AppColors.border, height: 1),
+              _buildSimpleTile(
+                title: 'Bank & Payout Settings',
+                subtitle: 'Manage your destination bank & IBAN',
+                icon: Icons.account_balance_rounded,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const IbanPayoutSettingsScreen()),
+                  );
+                },
+              ),
+            ]),
+            const SizedBox(height: 24),
+
+            // 4. Documents & Compliance
             _buildSectionTitle('Documents & Compliance'),
             const SizedBox(height: 10),
             _buildSettingsContainer([
@@ -378,23 +526,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const Divider(color: AppColors.border, height: 1),
               _buildSimpleTile(
-                title: 'IBAN & Payout Settings',
-                icon: Icons.account_balance_rounded,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const IbanPayoutSettingsScreen()),
-                  );
-                },
-              ),
-              const Divider(color: AppColors.border, height: 1),
-              _buildSimpleTile(
                 title: 'Driver License & Verification',
                 icon: Icons.badge_rounded,
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const DriverLicenseScreen()),
+                  );
+                },
+              ),
+              const Divider(color: AppColors.border, height: 1),
+              _buildSimpleTile(
+                title: 'Vehicle Insurance',
+                icon: Icons.shield_rounded,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const VehicleInsuranceScreen()),
                   );
                 },
               ),
@@ -466,24 +614,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 24),
             ],
 
-            // Help & Driver Guide
-            _buildSectionTitle('Help & Driver Guide'),
-            const SizedBox(height: 10),
-            _buildSettingsContainer([
-              _buildSimpleTile(
-                title: 'Driver FAQ & Handbook',
-                subtitle: 'Hot Potato offers, navigation, PIN verification, wallet & payouts',
-                icon: Icons.help_outline_rounded,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const DriverFaqScreen()),
-                  );
-                },
-              ),
-            ]),
-            const SizedBox(height: 24),
-
             // 6. System & Legal Policies
             _buildSectionTitle('Legal & System'),
             const SizedBox(height: 10),
@@ -526,18 +656,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               width: double.infinity,
               height: 50,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Logged out successfully.',
-                        style: GoogleFonts.poppins(fontSize: 12.5),
-                      ),
-                      backgroundColor: Colors.redAccent,
-                    ),
-                  );
-                  Navigator.pop(context);
-                },
+                onPressed: () => _showLogoutConfirmationDialog(context),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.redAccent, width: 1.5),
                   shape: RoundedRectangleBorder(

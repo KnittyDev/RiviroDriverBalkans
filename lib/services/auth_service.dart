@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'driver_stats_service.dart';
 import 'online_duration_service.dart';
 import 'profile_service.dart';
 import 'push_notification_service.dart';
@@ -19,6 +19,10 @@ class DriverProfileModel {
   final double? currentLng;
   final String? avatarUrl;
   final String accountCountry;
+  final String driverStatus; // 'pending', 'approved', 'rejected'
+  final String? licenseFrontUrl;
+  final String? licenseBackUrl;
+  final bool isLicenseVerified;
 
   DriverProfileModel({
     required this.id,
@@ -31,6 +35,10 @@ class DriverProfileModel {
     this.currentLng,
     this.avatarUrl,
     this.accountCountry = 'ME',
+    this.driverStatus = 'pending',
+    this.licenseFrontUrl,
+    this.licenseBackUrl,
+    this.isLicenseVerified = false,
   });
 
   factory DriverProfileModel.fromJson(Map<String, dynamic> json) {
@@ -45,6 +53,10 @@ class DriverProfileModel {
       currentLng: json['current_lng'] != null ? (json['current_lng'] as num).toDouble() : null,
       avatarUrl: json['avatar_url'] as String?,
       accountCountry: (json['account_country'] ?? json['accountCountry'] ?? 'ME').toString().toUpperCase(),
+      driverStatus: (json['driver_status'] ?? 'pending').toString().toLowerCase(),
+      licenseFrontUrl: json['license_front_url'] as String?,
+      licenseBackUrl: json['license_back_url'] as String?,
+      isLicenseVerified: json['is_license_verified'] == true,
     );
   }
 
@@ -60,6 +72,10 @@ class DriverProfileModel {
       'current_lng': currentLng,
       'avatar_url': avatarUrl,
       'account_country': accountCountry,
+      'driver_status': driverStatus,
+      'license_front_url': licenseFrontUrl,
+      'license_back_url': licenseBackUrl,
+      'is_license_verified': isLicenseVerified,
     };
   }
 
@@ -73,6 +89,11 @@ class DriverProfileModel {
     double? currentLat,
     double? currentLng,
     String? avatarUrl,
+    String? accountCountry,
+    String? driverStatus,
+    String? licenseFrontUrl,
+    String? licenseBackUrl,
+    bool? isLicenseVerified,
   }) {
     return DriverProfileModel(
       id: id ?? this.id,
@@ -84,6 +105,11 @@ class DriverProfileModel {
       currentLat: currentLat ?? this.currentLat,
       currentLng: currentLng ?? this.currentLng,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      accountCountry: accountCountry ?? this.accountCountry,
+      driverStatus: driverStatus ?? this.driverStatus,
+      licenseFrontUrl: licenseFrontUrl ?? this.licenseFrontUrl,
+      licenseBackUrl: licenseBackUrl ?? this.licenseBackUrl,
+      isLicenseVerified: isLicenseVerified ?? this.isLicenseVerified,
     );
   }
 }
@@ -162,13 +188,9 @@ class AuthService {
     }
   }
 
-  static String get _supabaseUrl =>
-      dotenv.env['SUPABASE_URL'] ?? 'https://dpxthqrofxsciaqbmnoq.supabase.co';
-  static String get _supabaseAnonKey =>
-      dotenv.env['SUPABASE_ANON_KEY'] ??
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRweHRocXJvZnhzY2lhcWJtbm9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3MjQ3OTAsImV4cCI6MjEwMTMwMDc5MH0.cVjaM5oAxinicaal1BV9D0Qa1JbJolAE5doKjsYH3kA';
-
   /// Initializes saved driver session from Supabase Auth / local storage
+  static Future<void> init() => initSavedDriverSession();
+
   static Future<void> initSavedDriverSession() async {
     try {
       final currentUser = Supabase.instance.client.auth.currentUser;
@@ -266,6 +288,21 @@ class AuthService {
         'email': email,
         'phone_number': phoneNumber,
         'role': 'driver',
+        'driver_status': 'pending',
+        'is_license_verified': false,
+        'vehicle_model': null,
+        'vehicle_plate': null,
+        'car_year': null,
+        'vehicle_color': null,
+        'bank_name': null,
+        'iban': null,
+        'swift_bic': null,
+        'account_holder_name': null,
+        'license_number': null,
+        'license_category': null,
+        'license_expiry_date': null,
+        'license_front_url': null,
+        'license_back_url': null,
         'created_at': nowUtcIso,
         'updated_at': nowUtcIso,
       });
@@ -276,14 +313,47 @@ class AuthService {
         email: email,
         phoneNumber: phoneNumber,
         role: 'driver',
+        driverStatus: 'pending',
+        isLicenseVerified: false,
       );
 
       await setCurrentDriver(newProfile);
-      debugPrint('✅ [Supabase Auth] Official Driver Registered: ${user.email} (UUID: $userId)');
+      debugPrint('✅ [Supabase Auth] Official Driver Registered: ${user.email} (UUID: $userId, Status: pending)');
       return true;
     } catch (e) {
       debugPrint('❌ [Supabase Auth Register Error]: $e');
       return false;
+    }
+  }
+
+  /// Fetches the latest live driver_status from Supabase profiles
+  static Future<String?> fetchDriverStatus([String? driverId]) async {
+    try {
+      final id = driverId ?? currentDriverNotifier.value?.id ?? Supabase.instance.client.auth.currentUser?.id;
+      if (id == null || id.isEmpty) return null;
+
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select('driver_status, is_license_verified, vehicle_model, vehicle_plate, license_number, license_front_url')
+          .eq('id', id)
+          .maybeSingle();
+
+      if (row != null) {
+        final status = (row['driver_status'] ?? 'pending').toString().toLowerCase();
+        if (currentDriverNotifier.value != null) {
+          final updated = currentDriverNotifier.value!.copyWith(
+            driverStatus: status,
+            isLicenseVerified: row['is_license_verified'] == true,
+            licenseFrontUrl: row['license_front_url'] as String?,
+          );
+          await setCurrentDriver(updated);
+        }
+        return status;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ [AuthService] Error fetching driver status: $e');
+      return null;
     }
   }
 
@@ -353,15 +423,43 @@ class AuthService {
     }
   }
 
-  /// Logout
+  /// Fully logs out the active driver, sets offline, and clears all session state
   static Future<void> logout() async {
-    currentDriverNotifier.value = null;
     try {
+      final driverId = currentDriverNotifier.value?.id ?? Supabase.instance.client.auth.currentUser?.id;
+      if (driverId != null && driverId.isNotEmpty) {
+        try {
+          await Supabase.instance.client.from('profiles').update({
+            'is_online': false,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          }).eq('id', driverId);
+        } catch (e) {
+          debugPrint('⚠️ [AuthService] Could not set offline before logout: $e');
+        }
+      }
+
+      // Stop tracking online duration
+      OnlineDurationService.onOnlineStatusChanged(false);
+
+      // Clear reactive driver profile
+      currentDriverNotifier.value = null;
+
+      // Clear ProfileService avatar and in-memory image cache
+      ProfileService.clear();
+
+      // Clear DriverStats state
+      DriverStatsService.reset();
+
+      // Supabase sign out
       await Supabase.instance.client.auth.signOut();
+
+      // Clear local SharedPreferences session
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefKey);
+
+      debugPrint('🚪 [AuthService] Driver successfully logged out.');
     } catch (e) {
-      debugPrint('Error clearing driver session: $e');
+      debugPrint('Error during driver logout: $e');
     }
   }
 }

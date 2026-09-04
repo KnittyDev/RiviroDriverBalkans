@@ -69,16 +69,24 @@ class _WithdrawModalState extends State<WithdrawModal> {
     try {
       final profileRow = await Supabase.instance.client
           .from('profiles')
-          .select('bank_name, iban, swift_bic, account_holder_name, full_name, driver_wallet')
+          .select('bank_name, iban, swift_bic, account_holder_name, full_name, driver_wallet, account_country')
           .eq('id', driverId)
           .maybeSingle();
 
       if (profileRow != null) {
         final walletVal = (profileRow['driver_wallet'] as num?)?.toDouble() ?? 0.0;
+        final rawBank = profileRow['bank_name']?.toString() ?? '';
+        final rawIban = profileRow['iban']?.toString() ?? '';
+        final rawSwift = profileRow['swift_bic']?.toString() ?? '';
+
         setState(() {
-          _bankName = profileRow['bank_name']?.toString() ?? 'NLB Banka AD Podgorica';
-          _iban = profileRow['iban']?.toString() ?? 'ME255300000012345678';
-          _swiftBic = profileRow['swift_bic']?.toString() ?? 'NLBMMEPG';
+          _bankName = (rawBank.isNotEmpty && !rawBank.contains('NLB Banka AD Podgorica'))
+              ? rawBank
+              : (rawBank.isNotEmpty ? rawBank : 'Bank Account');
+          _iban = (rawIban.isNotEmpty && !rawIban.contains('ME255300000012345678'))
+              ? rawIban
+              : (rawIban.isNotEmpty ? rawIban : '•••• •••• ••••');
+          _swiftBic = rawSwift;
           _holderName = profileRow['account_holder_name']?.toString() ??
               profileRow['full_name']?.toString() ??
               'Driver';
@@ -133,26 +141,44 @@ class _WithdrawModalState extends State<WithdrawModal> {
 
     try {
       final updatedWallet = _currentWallet - enteredAmount;
-      final payoutRef = '#TRX-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}-${_isExpressPayout ? 'SEPA' : 'STD'}';
+      final nowUtcIso = DateTime.now().toUtc().toIso8601String();
+      final payoutRef = '#TRX-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}-${_isExpressPayout ? 'EXP' : 'STD'}';
 
       // 1. Deduct wallet in profiles
       await Supabase.instance.client.from('profiles').update({
         'driver_wallet': updatedWallet,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at': nowUtcIso,
       }).eq('id', driverId);
 
-      // 2. Insert into wallet_transactions
+      // 2. Insert into payout_requests with status 'pending'
+      await Supabase.instance.client.from('payout_requests').insert({
+        'driver_id': driverId,
+        'amount': enteredAmount,
+        'currency': 'EUR',
+        'bank_name': _bankName,
+        'iban': _iban,
+        'swift_bic': _swiftBic,
+        'account_holder_name': _holderName,
+        'payout_reference': payoutRef,
+        'is_express': _isExpressPayout,
+        'status': 'pending',
+        'created_at': nowUtcIso,
+        'updated_at': nowUtcIso,
+      });
+
+      // 3. Insert into wallet_transactions with status 'pending'
       await Supabase.instance.client.from('wallet_transactions').insert({
         'user_id': driverId,
         'type': 'withdraw',
         'amount': -enteredAmount,
         'currency': '€',
-        'title': 'Payout Withdrawal',
+        'title': 'Payout Request',
         'subtitle': 'To $_bankName (${_formatMaskedIban(_iban)}) • $payoutRef',
-        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'status': 'pending',
+        'created_at': nowUtcIso,
       });
 
-      // 3. Refresh live driver stats
+      // 4. Refresh live driver stats
       await DriverStatsService.fetchDriverLiveStats(driverId);
 
       HapticFeedback.heavyImpact();
@@ -528,23 +554,48 @@ class _WithdrawModalState extends State<WithdrawModal> {
       children: [
         const SizedBox(height: 12),
         Container(
-          width: 70,
-          height: 70,
+          width: 72,
+          height: 72,
           decoration: BoxDecoration(
-            color: const Color(0xFF22C55E).withOpacity(0.15),
+            color: const Color(0xFFFEF3C7),
             shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFFDE68A), width: 2),
           ),
-          child: const Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 44),
+          child: const Icon(Icons.hourglass_top_rounded, color: Color(0xFFD97706), size: 40),
         ),
         const SizedBox(height: 16),
         Text(
-          'Payout Initiated!',
+          'Payout Request Submitted!',
           style: GoogleFonts.poppins(fontSize: 19, fontWeight: FontWeight.bold, color: AppColors.textDark),
         ),
         const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEF3C7),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.5)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.schedule_rounded, size: 13, color: Color(0xFFD97706)),
+              const SizedBox(width: 5),
+              Text(
+                'STATUS: PENDING REVIEW',
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFFD97706),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
         Text(
-          'Your payout of €${_amountController.text} has been successfully sent to your bank account.',
-          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textMuted),
+          'Your withdrawal request of €${_amountController.text} has been submitted with PENDING status. Our finance team will review and approve the transfer to your bank account.',
+          style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textMuted, height: 1.4),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 20),
@@ -562,9 +613,11 @@ class _WithdrawModalState extends State<WithdrawModal> {
               const Divider(color: AppColors.border, height: 16),
               _buildSuccessRow('IBAN', _formatMaskedIban(_iban)),
               const Divider(color: AppColors.border, height: 16),
-              _buildSuccessRow('Estimated Arrival', _isExpressPayout ? '5-15 min (SEPA Instant)' : '1-2 business days'),
+              _buildSuccessRow('Status', 'Pending Approval'),
               const Divider(color: AppColors.border, height: 16),
-              _buildSuccessRow('Transaction Ref', _lastPayoutRef ?? '#TRX-SEPA-9821'),
+              _buildSuccessRow('Estimated Review', _isExpressPayout ? '1-2 business hours' : '24-48 hours'),
+              const Divider(color: AppColors.border, height: 16),
+              _buildSuccessRow('Request Reference', _lastPayoutRef ?? '#TRX-EXP-9821'),
             ],
           ),
         ),
@@ -583,7 +636,7 @@ class _WithdrawModalState extends State<WithdrawModal> {
             ),
             child: Text(
               'Done',
-              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold),
+              style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.bold),
             ),
           ),
         ),
@@ -595,8 +648,24 @@ class _WithdrawModalState extends State<WithdrawModal> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textMuted)),
-        Text(value, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+        Text(
+          title,
+          style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textMuted),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: GoogleFonts.poppins(
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }

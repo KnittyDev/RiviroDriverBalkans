@@ -55,10 +55,17 @@ class _VehicleSettingsScreenState extends State<VehicleSettingsScreen> {
           .maybeSingle();
 
       if (profileRow != null && mounted) {
-        _modelController.text = profileRow['vehicle_model']?.toString() ?? 'Mercedes-Benz E-Class';
-        _plateController.text = profileRow['vehicle_plate']?.toString() ?? 'PG-TX-789';
-        _yearController.text = profileRow['car_year']?.toString() ?? '2022';
-        _colorController.text = profileRow['vehicle_color']?.toString() ?? 'Black Metallic';
+        final m = profileRow['vehicle_model']?.toString() ?? '';
+        _modelController.text = m == 'Mercedes-Benz E-Class' ? '' : m;
+
+        final p = profileRow['vehicle_plate']?.toString() ?? '';
+        _plateController.text = p == 'PG-TX-789' ? '' : p;
+
+        final y = profileRow['car_year']?.toString() ?? '';
+        _yearController.text = y == '2022' ? '' : y;
+
+        final c = profileRow['vehicle_color']?.toString() ?? '';
+        _colorController.text = (c == 'Black Metallic' || c == 'Standard') ? '' : c;
       }
     } catch (e) {
       debugPrint('⚠️ [VehicleSettings] Error loading vehicle data: $e');
