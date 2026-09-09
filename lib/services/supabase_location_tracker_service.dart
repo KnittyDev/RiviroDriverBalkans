@@ -67,7 +67,7 @@ class SupabaseLocationTrackerService {
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: "Rivilo Driver Background GPS",
           notificationText: "Tracking driver location in background for passenger dispatching",
-          notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+          notificationIcon: AndroidResource(name: 'ic_notification', defType: 'drawable'),
           enableWakeLock: true,
         ),
       );

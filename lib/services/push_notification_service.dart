@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:ui';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
@@ -25,7 +26,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     debugPrint('🔔 [FCM Background] Received message: ${message.messageId}, data: ${message.data}');
 
     final localNotifications = FlutterLocalNotificationsPlugin();
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
     const iosSettings = DarwinInitializationSettings();
     await localNotifications.initialize(
       const InitializationSettings(android: androidSettings, iOS: iosSettings),
@@ -54,6 +55,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             'High-priority sound and banner notifications for incoming driver ride requests.',
         importance: Importance.max,
         priority: Priority.high,
+        icon: '@drawable/ic_notification',
+        color: const Color(0xFF79C0BD),
+        largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
         ticker: 'Incoming Ride Request',
         fullScreenIntent: true,
         category: AndroidNotificationCategory.call,
@@ -118,6 +122,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         channelDescription: 'Real-time encrypted in-ride chat messages from passengers.',
         importance: Importance.high,
         priority: Priority.high,
+        icon: '@drawable/ic_notification',
+        color: const Color(0xFF79C0BD),
+        largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
         category: AndroidNotificationCategory.message,
         visibility: NotificationVisibility.public,
         groupKey: 'chat_group_$rideId',
@@ -201,7 +208,7 @@ class PushNotificationService {
       debugPrint('🔔 [FCM] Notification authorization status: ${settings.authorizationStatus}');
 
       // 3. Initialize Local Notifications Plugin
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
       const iosSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
@@ -422,6 +429,9 @@ class PushNotificationService {
       channelDescription: _chatChannelDescription,
       importance: Importance.high,
       priority: Priority.high,
+      icon: '@drawable/ic_notification',
+      color: const Color(0xFF79C0BD),
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
       category: AndroidNotificationCategory.message,
       visibility: NotificationVisibility.public,
       groupKey: 'chat_group_$rideId',
@@ -469,6 +479,9 @@ class PushNotificationService {
       channelDescription: _channelDescription,
       importance: Importance.max,
       priority: Priority.high,
+      icon: '@drawable/ic_notification',
+      color: const Color(0xFF79C0BD),
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
       ticker: 'Incoming Ride Request',
       fullScreenIntent: true,
       category: AndroidNotificationCategory.call,
@@ -516,12 +529,15 @@ class PushNotificationService {
     required String body,
     String? payload,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
+    final androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
       channelDescription: _channelDescription,
       importance: Importance.high,
       priority: Priority.high,
+      icon: '@drawable/ic_notification',
+      color: const Color(0xFF79C0BD),
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
     );
 
     const iosDetails = DarwinNotificationDetails(
@@ -530,7 +546,7 @@ class PushNotificationService {
       presentSound: true,
     );
 
-    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+    final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
 
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch & 0x7FFFFFFF,
